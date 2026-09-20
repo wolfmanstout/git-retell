@@ -1,0 +1,40 @@
+[project]
+name = "git-retell"
+version = "0.1.0"
+description = "Synthetic Git histories for code review"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "James Stout"}]
+requires-python = ">=3.11"
+dependencies = [
+    "click"
+]
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13"]
+build-backend = "uv_build"
+
+[project.urls]
+Homepage = "https://github.com/wolfmanstout/git-retell"
+Changelog = "https://github.com/wolfmanstout/git-retell/releases"
+Issues = "https://github.com/wolfmanstout/git-retell/issues"
+CI = "https://github.com/wolfmanstout/git-retell/actions"
+
+[project.scripts]
+git-retell = "git_retell.cli:cli"
+
+[dependency-groups]
+dev = [
+    "basedpyright==1.39.3",
+    "pytest",
+]
+
+[tool.ruff.lint]
+ignore = ["BLE001", "S110"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"
