@@ -34,6 +34,7 @@ def test_viewer_navigation_and_resize(repo, tmp_path, monkeypatch):
     monkeypatch.setattr(viewer.click, "getchar", lambda: next(keys))
     viewer.view(refresh(history))
     assert ["First explanation" in output for output in outputs] == [True, False, True]
+    assert "n/p:step" in outputs[0] and "q:quit" in outputs[0]
     outputs.clear()
     monkeypatch.setattr(
         viewer.shutil, "get_terminal_size", lambda: os.terminal_size((30, 8))

@@ -26,15 +26,13 @@ def slide(
     index: int,
     *,
     context: int = 3,
-    navigation: bool = True,
 ) -> str:
     commit = commits[index]
     previous = history.base if index == 0 else commits[index - 1]
     heading = f"SYNTHETIC explanatory history · {history.name} · {index + 1}/{len(commits)} · {commit[:8]}"
     message = safe_text(history.message(commit))
     patch = safe_text(diff(history.repo, previous, commit, context=context))
-    footer = "\n[←/p] previous   [→/n/space] next   [q] quit" if navigation else ""
-    return f"{heading}\n\n{message}\n\n{patch}{footer}"
+    return f"{heading}\n\n{message}\n\n{patch}"
 
 
 def dimensions(text: str) -> tuple[int, int]:
@@ -110,7 +108,7 @@ def view(history: History) -> None:
     content = ""
     while True:
         if cached != (index, context):
-            content = slide(history, commits, index, context=context, navigation=False)
+            content = slide(history, commits, index, context=context)
             cached = (index, context)
         terminal = shutil.get_terminal_size()
         label = f"{status} {index + 1}/{len(commits)} U{context}"

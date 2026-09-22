@@ -59,5 +59,6 @@ def test_cli_validate_show_and_nonterminal_view(repo, tmp_path):
     result = runner.invoke(cli, ["show", "demo", "--all"])
     assert "SYNTHETIC" in result.output and "Explain the change" in result.output
     assert "-before" in result.output and "+after" in result.output
+    assert "[q] quit" not in result.output and "q:quit" not in result.output
     assert runner.invoke(cli, ["show", "demo", "--step", "2"]).exit_code == 1
     assert runner.invoke(cli, ["view", "demo"]).exit_code == 1
