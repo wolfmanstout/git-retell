@@ -22,13 +22,13 @@ def resolve(repo: Path, revision: str, kind: str = "commit") -> str:
                f"{revision}^{{{kind}}}").strip()
 
 
-def diff(repo: Path, before: str, after: str, *, numstat: bool = False) -> str:
+def diff(repo: Path, before: str, after: str, *, numstat: bool = False, context: int = 3) -> str:
     options = ["--no-patch", "--numstat", "-z"] if numstat else ["--patch", "--binary", "--full-index"]
     return git(
         repo, "-c", "core.quotePath=true", "-c", "diff.suppressBlankEmpty=false",
         "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames",
         "--no-relative", "--src-prefix=a/", "--dst-prefix=b/", "--line-prefix=",
-        "--unified=3", "--inter-hunk-context=0", "--diff-algorithm=myers",
+        f"--unified={context}", "--inter-hunk-context=0", "--diff-algorithm=myers",
         "--no-indent-heuristic", "--submodule=short", *options, before, after, "--",
     )
 

@@ -67,16 +67,28 @@ for zero real churn or any binary edits; text churn remains available. Mode-only
 changes still consume presentation lines even when their line churn is zero.
 Reports include each step's hash, subject, churn and diff lines, plus totals.
 
-The budget covers the diff. Messages and navigation consume additional terminal
-rows. Long lines wrap visibly, consuming extra rows. The viewer displays complete
-slides when they fit; otherwise it asks for a larger terminal or smaller step.
-Start around 30–40 diff lines for a modest terminal, or use the default 60 in a
-larger window. The MVP counts lines, not semantic complexity or reading time.
+The budget covers the standard three-context-line diff. Messages, navigation,
+wrapping, and extra context can require more terminal space. The viewer pages
+through slides of any size, including on terminals smaller than the authoring
+budget. It labels invalid histories; paging does not waive budget validation.
 
-Use `n`/right arrow/space and `p`/left arrow to move, and `q` to quit. After resizing,
-press `r`. `show NAME --all` prints every slide for a pager or text export. Terminal
-controls are visibly escaped and tabs expanded; these do not hide changed lines.
-The viewer labels unfinished/invalid histories and never silently crops a diff.
+Viewer controls:
+
+- `n` / right arrow and `p` / left arrow: next and previous step.
+- `j` / down arrow and `k` / up arrow: scroll one line.
+- `f` / PageDown and `b` / PageUp: page down and up.
+- Space: page down, then advance to the next step at the bottom.
+- `g` / `G`: top / bottom of the current slide.
+- `+` (or `=`) / `-`: add / remove three diff context lines, down to zero.
+- `0`: reset context to three lines. Context persists across steps.
+- `r`: redraw after resizing; `q`: quit.
+
+Changing context returns to the top of the slide. The footer shows the step,
+context (`U3`, `U6`, etc.), and visible line range. All message and diff lines
+remain accessible, including wrapped lines. Context is a viewing preference;
+validation, expansion, saved histories, and plain `show` output remain unchanged.
+`show NAME --all` prints every slide for a pager or text export. Terminal controls
+are visibly escaped and tabs expanded. The MVP budgets lines, not reading time.
 
 ## Checks
 

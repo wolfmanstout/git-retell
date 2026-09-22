@@ -99,12 +99,16 @@ def show(name: str, step: int, all_steps: bool):
 @cli.command()
 @click.argument("name")
 def view(name: str):
-    """Play the synthetic history: previous/next/quit, with no cropped diffs.
+    """Browse synthetic steps with paging and adjustable diff context.
 
-    A slide includes its commit message as well as the budgeted diff. Long lines
-    wrap; terminal dimensions may require a larger window or smaller steps. Too-large slides
-    show a resize prompt; use show for unrestricted plain text. View also works
-    on unfinished histories; run validate before using one for review.
+    n/p or right/left: next/previous step. j/k or down/up: scroll one line.
+    f/b or PageDown/PageUp: page. Space pages, then advances at the bottom.
+    g/G: top/bottom. +/-: add/remove 3 context lines; 0: reset to 3.
+    Context persists across steps. q: quit. r: redraw after resizing.
+
+    Long lines wrap and oversized slides page in any terminal. Messages and
+    every diff line remain accessible. Context changes only the view; validation
+    and saved budgets always use -U3. Run validate before using a history for review.
     """
     view_history(History.load(root(), name))
 
