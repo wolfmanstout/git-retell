@@ -1,10 +1,10 @@
 """Optional quality checks run on disposable, detached worktrees."""
 
-from pathlib import Path
 import os
 import signal
 import subprocess
 import tempfile
+from pathlib import Path
 
 from .git import git
 from .history import History
@@ -33,9 +33,15 @@ def stop(process: subprocess.Popen) -> None:
 
 def run_check(path: Path, command: tuple[str, ...], timeout: float) -> dict:
     try:
-        with subprocess.Popen(command, cwd=path, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True, errors="replace",
-                              start_new_session=os.name == "posix") as process:
+        with subprocess.Popen(
+            command,
+            cwd=path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            start_new_session=os.name == "posix",
+        ) as process:
             timed_out = False
             try:
                 stdout, stderr = process.communicate(timeout=timeout)
@@ -46,8 +52,18 @@ def run_check(path: Path, command: tuple[str, ...], timeout: float) -> dict:
                     raise
                 timed_out = True
                 stderr += f"\nCheck exceeded {timeout:g} seconds."
-            return {"returncode": process.returncode, "passed": process.returncode == 0,
-                    "stdout": stdout, "stderr": stderr, "timed_out": timed_out}
+            return {
+                "returncode": process.returncode,
+                "passed": process.returncode == 0,
+                "stdout": stdout,
+                "stderr": stderr,
+                "timed_out": timed_out,
+            }
     except OSError as error:
-        return {"returncode": None, "passed": False, "stdout": "",
-                "stderr": str(error), "timed_out": False}
+        return {
+            "returncode": None,
+            "passed": False,
+            "stdout": "",
+            "stderr": str(error),
+            "timed_out": False,
+        }

@@ -12,12 +12,22 @@ from .history import History, inspect
 
 def safe_text(text: str) -> str:
     """Make terminal controls visible; repository contents are untrusted text."""
-    return "".join(c if c in "\n\t" or not unicodedata.category(c).startswith("C")
-                   else f"\\x{ord(c):02x}" for c in text).expandtabs(8)
+    return "".join(
+        c
+        if c in "\n\t" or not unicodedata.category(c).startswith("C")
+        else f"\\x{ord(c):02x}"
+        for c in text
+    ).expandtabs(8)
 
 
-def slide(history: History, commits: list[str], index: int, *,
-          context: int = 3, navigation: bool = True) -> str:
+def slide(
+    history: History,
+    commits: list[str],
+    index: int,
+    *,
+    context: int = 3,
+    navigation: bool = True,
+) -> str:
     commit = commits[index]
     previous = history.base if index == 0 else commits[index - 1]
     heading = f"SYNTHETIC explanatory history · {history.name} · {index + 1}/{len(commits)} · {commit[:8]}"
@@ -29,9 +39,17 @@ def slide(history: History, commits: list[str], index: int, *,
 
 def dimensions(text: str) -> tuple[int, int]:
     lines = text.split("\n")
-    widths = [sum(0 if unicodedata.combining(c) else
-                  2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
-                  for c in line) for line in lines]
+    widths = [
+        sum(
+            0
+            if unicodedata.combining(c)
+            else 2
+            if unicodedata.east_asian_width(c) in ("W", "F")
+            else 1
+            for c in line
+        )
+        for line in lines
+    ]
     return max(widths, default=0), len(lines)
 
 
@@ -50,8 +68,9 @@ def wrap_lines(text: str, columns: int) -> str:
     return "\n".join(wrapped)
 
 
-def page(content: str, label: str, offset: int, columns: int,
-         rows: int) -> tuple[str, int, int, int]:
+def page(
+    content: str, label: str, offset: int, columns: int, rows: int
+) -> tuple[str, int, int, int]:
     """Reserve fixed chrome and page every wrapped content line, including messages."""
     width = max(1, columns - 1)
     lines = wrap_lines(content, width).split("\n")
@@ -68,7 +87,7 @@ def page(content: str, label: str, offset: int, columns: int,
         chrome = [f"{label} q:quit"[:width]]
     height = max(1, rows - len(chrome) - 1)
     offset = max(0, min(offset, max(0, len(lines) - height)))
-    visible = lines[offset:offset + height]
+    visible = lines[offset : offset + height]
     if len(chrome) > 1:
         chrome = footer(offset + 1, offset + len(visible))
     frame = visible + [""] * (height - len(visible)) + chrome
@@ -77,10 +96,14 @@ def page(content: str, label: str, offset: int, columns: int,
 
 def view(history: History) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
-        raise click.ClickException("view needs a terminal. Use show NAME --all for plain output.")
+        raise click.ClickException(
+            "view needs a terminal. Use show NAME --all for plain output."
+        )
     commits = history.commits()
     if not commits:
-        raise click.ClickException("No explanatory steps yet. Create commits in the authoring worktree.")
+        raise click.ClickException(
+            "No explanatory steps yet. Create commits in the authoring worktree."
+        )
     status = "VALID" if inspect(history)["valid"] else "INVALID"
     index, context, offset = 0, 3, 0
     cached = None
@@ -92,7 +115,8 @@ def view(history: History) -> None:
         terminal = shutil.get_terminal_size()
         label = f"{status} {index + 1}/{len(commits)} U{context}"
         frame, offset, height, bottom = page(
-            content, label, offset, terminal.columns, terminal.lines)
+            content, label, offset, terminal.columns, terminal.lines
+        )
         click.clear()
         click.echo(frame)
         key = click.getchar()

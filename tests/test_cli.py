@@ -17,17 +17,39 @@ def test_help_and_version():
 def test_start_rejects_collisions_without_changing_history(repo, tmp_path):
     history, path = example(repo, tmp_path)
     runner = CliRunner()
-    result = runner.invoke(cli, ["start", "demo", "--base", "HEAD", "--target", "HEAD",
-                                 "--worktree", str(path)])
+    result = runner.invoke(
+        cli,
+        [
+            "start",
+            "demo",
+            "--base",
+            "HEAD",
+            "--target",
+            "HEAD",
+            "--worktree",
+            str(path),
+        ],
+    )
     assert result.exit_code != 0 and "already exists" in result.output
     assert refresh(history) == history
-    result = runner.invoke(cli, ["start", "../bad", "--base", "HEAD", "--target", "HEAD",
-                                 "--worktree", str(tmp_path / "bad")])
+    result = runner.invoke(
+        cli,
+        [
+            "start",
+            "../bad",
+            "--base",
+            "HEAD",
+            "--target",
+            "HEAD",
+            "--worktree",
+            str(tmp_path / "bad"),
+        ],
+    )
     assert result.exit_code != 0
 
 
 def test_cli_validate_show_and_nonterminal_view(repo, tmp_path):
-    history, path = example(repo, tmp_path)
+    _history, path = example(repo, tmp_path)
     runner = CliRunner()
     result = runner.invoke(cli, ["validate", "demo", "--json"])
     assert result.exit_code == 1 and not json.loads(result.output)["valid"]
