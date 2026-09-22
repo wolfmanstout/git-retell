@@ -1,5 +1,12 @@
 # git-retell
 
+[![PyPI](https://img.shields.io/pypi/v/git-retell.svg)](https://pypi.org/project/git-retell/)
+[![Changelog](https://img.shields.io/github/v/release/wolfmanstout/git-retell?include_prereleases&label=changelog)](https://github.com/wolfmanstout/git-retell/releases)
+[![Tests](https://github.com/wolfmanstout/git-retell/actions/workflows/test.yml/badge.svg)](https://github.com/wolfmanstout/git-retell/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/wolfmanstout/git-retell/blob/main/LICENSE)
+
+Synthetic Git histories for code review
+
 Explain a real code transformation **B → H** with a synthetic Git history
 **B → S1 → S2 → … → H**. Each commit is a slide; its message explains its diff.
 An agent or human authors the steps. This CLI supplies the authoring worktree,
@@ -9,9 +16,43 @@ The endpoints must be exact. Intermediate implementations can be temporary,
 change the same lines repeatedly, or fail tests. They are explanations, not a
 claim about how the code was originally developed.
 
-## Try it
+## Installation
 
-Requires Python 3.11+, Git with worktree support, and uv for local development.
+Requires Python 3.11+ and Git with worktree support. The package is not yet
+published on PyPI. For now, install from a checkout of this repository:
+
+```sh
+uv tool install .
+```
+
+You can also install from the checkout using `pip install .` in a virtual
+environment or `pipx install .`.
+
+Once published on PyPI, install using `pip` or `pipx`:
+
+```sh
+pip install git-retell
+# Or install the CLI in an isolated environment:
+pipx install git-retell
+```
+
+## Usage
+
+For help, run:
+
+```sh
+git-retell --help
+```
+
+With the package installed in your Python environment, you can also use:
+
+```sh
+python -m git_retell --help
+```
+
+### Try it from source
+
+Use uv for local development. From a checkout of this repository:
 
 ```sh
 uv sync --locked
@@ -32,10 +73,10 @@ uv run git-retell view demo
 uv run git-retell check demo --timeout 60 -- uv run pytest
 ```
 
-The tool can also be installed with `uv tool install .`, making `git-retell`
-available while working in any repository. Running the tool from the original
-checkout avoids depending on the incomplete implementation in a synthetic step.
-All commands explain their options with `--help`.
+Installing the CLI makes `git-retell` available while working in any repository.
+When using `uv run` from source, run the tool from the original checkout to avoid
+depending on the incomplete implementation in a synthetic step. All commands
+explain their options with `--help`.
 
 ## What is validated?
 
@@ -148,9 +189,23 @@ refs. The explanatory branch has no special dependency on an authoring script.
 
 ## Development
 
+To contribute to this tool, use uv. The following command will establish the
+virtual environment and run tests:
+
 ```sh
 uv run pytest
+```
+
+Run type checking with:
+
+```sh
 uv run basedpyright
+```
+
+To run git-retell locally, use:
+
+```sh
+uv run git-retell
 ```
 
 Tests exercise real temporary repositories and worktrees, including exact trees,
