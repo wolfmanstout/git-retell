@@ -6,9 +6,10 @@ from pathlib import Path
 import click
 
 
-def git(repo: Path, *args: str) -> str:
+def git(repo: Path, *args: str, input_text: str | None = None) -> str:
     result = subprocess.run(
         ["git", "--no-replace-objects", "-C", str(repo), *args],
+        input=input_text.encode() if input_text is not None else None,
         capture_output=True,
         check=False,
     )

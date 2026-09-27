@@ -3,8 +3,8 @@ import os
 import pytest
 
 from git_retell import viewer
-from git_retell.git import line_count
-from git_retell.history import History, inspect
+from git_retell.git import git, line_count
+from git_retell.retelling import Retelling, inspect
 
 from .helpers import commit, example, refresh
 
@@ -17,7 +17,7 @@ def test_terminal_controls_and_width():
 
 
 def test_viewer_navigation_and_resize(repo, tmp_path, monkeypatch):
-    history, path = example(repo, tmp_path)
+    retelling, path = example(repo, tmp_path)
     (path / "code.txt").write_text("naive\n")
     commit(path, "First explanation")
     (path / "code.txt").write_text("after\n")
@@ -32,7 +32,7 @@ def test_viewer_navigation_and_resize(repo, tmp_path, monkeypatch):
     monkeypatch.setattr(viewer.click, "clear", lambda: None)
     keys = iter(["n", "p", "q"])
     monkeypatch.setattr(viewer.click, "getchar", lambda: next(keys))
-    viewer.view(refresh(history))
+    viewer.view(refresh(retelling))
     assert ["First explanation" in output for output in outputs] == [True, False, True]
     assert "n/p:step" in outputs[0] and "q:quit" in outputs[0]
     outputs.clear()
@@ -40,7 +40,7 @@ def test_viewer_navigation_and_resize(repo, tmp_path, monkeypatch):
         viewer.shutil, "get_terminal_size", lambda: os.terminal_size((30, 8))
     )
     monkeypatch.setattr(viewer.click, "getchar", lambda: "q")
-    viewer.view(refresh(history))
+    viewer.view(refresh(retelling))
     assert "SYNTHETIC" in outputs[0]
     assert viewer.dimensions(outputs[0])[1] < 8
     assert "needs at least" not in outputs[0]
@@ -75,18 +75,18 @@ def test_context_changes_view_but_not_validation(repo, tmp_path):
     commit(repo, "Context")
     changed = original.copy()
     changed[20] = "replacement\n"
-    history, path = example(repo, tmp_path, "".join(changed))
+    retelling, path = example(repo, tmp_path, "".join(changed))
     (path / "code.txt").write_text("".join(changed))
     commit(path, "Change surrounded by unchanged code")
-    history = refresh(history)
-    baseline = inspect(history)
-    small = viewer.slide(history, history.commits(), 0, context=0)
-    expanded = viewer.slide(history, history.commits(), 0, context=9)
+    retelling = refresh(retelling)
+    baseline = inspect(retelling)
+    small = viewer.slide(retelling, retelling.commits(), 0, context=0)
+    expanded = viewer.slide(retelling, retelling.commits(), 0, context=9)
     assert " line 12\n" not in small and " line 12\n" in expanded
     assert "-line 20\n" in small and "-line 20\n" in expanded
     assert "+replacement\n" in small and "+replacement\n" in expanded
-    assert inspect(history) == baseline
-    assert History.load(repo, "demo").budget == history.budget
+    assert inspect(retelling) == baseline
+    assert Retelling.load(repo, "demo").budget == retelling.budget
 
 
 def test_viewer_context_paging_and_resize(repo, tmp_path, monkeypatch):
@@ -94,12 +94,12 @@ def test_viewer_context_paging_and_resize(repo, tmp_path, monkeypatch):
     (repo / "code.txt").write_text(original)
     commit(repo, "Context")
     changed = original.replace("line 30\n", "replacement\n")
-    history, path = example(repo, tmp_path, changed)
+    retelling, path = example(repo, tmp_path, changed)
     (path / "code.txt").write_text(original.replace("line 30\n", "naive\n"))
     commit(path, "First explanation")
     (path / "code.txt").write_text(changed)
     commit(path, "Second explanation")
-    history = refresh(history)
+    retelling = refresh(retelling)
     monkeypatch.setattr(viewer.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(viewer.sys.stdout, "isatty", lambda: True)
     size = [os.terminal_size((80, 12))]
@@ -119,7 +119,7 @@ def test_viewer_context_paging_and_resize(repo, tmp_path, monkeypatch):
         return value
 
     monkeypatch.setattr(viewer.click, "getchar", key)
-    viewer.view(history)
+    viewer.view(retelling)
     assert "1/2 U6" in outputs[1] and "2/2 U6" in outputs[2]
     assert "2/2 U0" in outputs[4] and "2/2 U0" in outputs[5]
     assert "2/2 U3" in outputs[6]
@@ -131,7 +131,7 @@ def test_viewer_context_paging_and_resize(repo, tmp_path, monkeypatch):
 
 
 def test_space_pages_before_advancing(repo, tmp_path, monkeypatch):
-    history, path = example(repo, tmp_path)
+    retelling, path = example(repo, tmp_path)
     (path / "code.txt").write_text("naive\n")
     commit(path, "First explanation")
     (path / "code.txt").write_text("after\n")
@@ -146,8 +146,41 @@ def test_space_pages_before_advancing(repo, tmp_path, monkeypatch):
     monkeypatch.setattr(viewer.click, "clear", lambda: None)
     keys = iter([" ", "G", " ", "\x1b[D", "\x1b[6~", "\x1b[5~", "q"])
     monkeypatch.setattr(viewer.click, "getchar", lambda: next(keys))
-    viewer.view(refresh(history))
+    viewer.view(refresh(retelling))
     assert "1/2 U3" in outputs[1] and outputs[1] != outputs[0]
     assert "2/2 U3" in outputs[3]
     assert "1/2 U3" in outputs[4]
     assert outputs[5] != outputs[4] and outputs[6] == outputs[4]
+
+
+@pytest.mark.parametrize("override", [None, 6])
+def test_viewer_uses_initial_context_and_revalidates(
+    repo, tmp_path, monkeypatch, override
+):
+
+    original = "".join(f"line {i}\n" for i in range(40))
+    (repo / "code.txt").write_text(original)
+    commit(repo, "Before with context")
+    target = original.replace("line 20\n", "replacement\n")
+    retelling, path = example(repo, tmp_path, target, budget=8)
+    (path / "code.txt").write_text(target)
+    commit(path, "Explain")
+    git(repo, "config", "retell.demo.context", "0")
+    monkeypatch.setattr(viewer.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(viewer.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(
+        viewer.shutil, "get_terminal_size", lambda: os.terminal_size((179, 74))
+    )
+    outputs = []
+    monkeypatch.setattr(viewer.click, "echo", outputs.append)
+    monkeypatch.setattr(viewer.click, "clear", lambda: None)
+    keys = iter(["+", "0", "q"])
+    monkeypatch.setattr(viewer.click, "getchar", lambda: next(keys))
+    viewer.view(refresh(retelling), context=override)
+    initial = 0 if override is None else override
+    assert f"1/1 U{initial}" in outputs[0]
+    assert f"INVALID 1/1 U{initial + 3}" in outputs[1]
+    assert outputs[2] == outputs[0]
+    if override is None:
+        assert "VALID 1/1 U0" in outputs[0] and "INVALID" not in outputs[0]
+    assert refresh(retelling).context == 0

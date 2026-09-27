@@ -1,7 +1,7 @@
 """Shared helpers for authoring test histories in real Git repositories."""
 
 from git_retell.git import git, resolve
-from git_retell.history import History, start
+from git_retell.retelling import Retelling, start
 
 
 def commit(path, message):
@@ -15,9 +15,9 @@ def example(repo, tmp_path, target="after\n", budget=60):
     (repo / "code.txt").write_text(target)
     head = commit(repo, "Real change")
     path = tmp_path / "author"
-    history = start(repo, "demo", base, head, path, budget)
-    return history, path
+    retelling = start(repo, "demo", base, head, path, budget)
+    return retelling, path
 
 
-def refresh(history):
-    return History.load(history.repo, history.name)
+def refresh(retelling):
+    return Retelling.load(retelling.repo, retelling.name)

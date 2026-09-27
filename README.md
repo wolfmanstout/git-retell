@@ -50,33 +50,31 @@ With the package installed in your Python environment, you can also use:
 python -m git_retell --help
 ```
 
-### Try it from source
+### Example workflow
 
-Use uv for local development. From a checkout of this repository:
+After installation, run `git-retell` in the repository you want to explain:
 
 ```sh
-uv sync --locked
-uv run git-retell --help
+git-retell --help
 
 # Commit the real change first; B and H must resolve to commits.
-uv run git-retell start demo --base HEAD~1 --target HEAD \
+git-retell start demo --base HEAD~1 --target HEAD \
   --worktree /tmp/retell-demo --budget 40
 
 # In /tmp/retell-demo, use ordinary Git to author the explanation:
 # edit files, git add ..., git commit -m 'Explain why this step exists'
 # Repeat, amend, or rebase as needed. Finish at exactly H's tree.
 
-# Run these from the original repository, using its installed tool:
-uv run git-retell validate demo --json
-uv run git-retell show demo --step 1
-uv run git-retell view demo
-uv run git-retell check demo --timeout 60 -- uv run pytest
+# Review the retelling using the installed CLI:
+git-retell validate demo --json
+git-retell show demo --step 1
+git-retell view demo
+git-retell check demo --timeout 60 -- pytest
+git-retell list
 ```
 
 Installing the CLI makes `git-retell` available while working in any repository.
-When using `uv run` from source, run the tool from the original checkout to avoid
-depending on the incomplete implementation in a synthetic step. All commands
-explain their options with `--help`.
+All commands explain their options with `--help`.
 
 ## What is validated?
 
@@ -91,7 +89,8 @@ history. No test result or expansion threshold changes that verdict. Only
 committed states participate. Untracked files and working-tree edits are excluded.
 An empty history is valid only if the pinned endpoints already have equal trees.
 
-The renderer uses ordinary Git unified diffs with three context lines, headers,
+The renderer uses ordinary Git unified diffs with configurable context (three
+lines by default), headers,
 containing-function text, and no rename detection. Binary changes use full Git
 binary patches. External diff tools and text conversions are disabled so no
 edits are replaced by a summary. The same renderer serves validation and viewing.
@@ -108,7 +107,7 @@ for zero real churn or any binary edits; text churn remains available. Mode-only
 changes still consume presentation lines even when their line churn is zero.
 Reports include each step's hash, subject, churn and diff lines, plus totals.
 
-The budget covers the standard three-context-line diff. Messages, navigation,
+The budget covers the diff at the selected context setting. Messages, navigation,
 wrapping, and extra context can require more terminal space. The viewer pages
 through slides of any size, including on terminals smaller than the authoring
 budget. It labels invalid histories; paging does not waive budget validation.
@@ -121,15 +120,85 @@ Viewer controls:
 - Space: page down, then advance to the next step at the bottom.
 - `g` / `G`: top / bottom of the current slide.
 - `+` (or `=`) / `-`: add / remove three diff context lines, down to zero.
-- `0`: reset context to three lines. Context persists across steps.
+- `0`: reset to the initial context (the flag or saved setting). Context persists across steps.
 - `r`: redraw after resizing; `q`: quit.
 
 Changing context returns to the top of the slide. The footer shows the step,
 context (`U3`, `U6`, etc.), and visible line range. All message and diff lines
 remain accessible, including wrapped lines. Context is a viewing preference;
-validation, expansion, saved histories, and plain `show` output remain unchanged.
+saved settings and code churn remain unchanged. The VALID/INVALID status is
+recomputed at the displayed context, so expanding context can exceed the budget.
 `show NAME --all` prints every slide for a pager or text export. Terminal controls
 are visibly escaped and tabs expanded. The MVP budgets lines, not reading time.
+
+## Configuration
+
+`start --budget N --context N` saves defaults for a retelling. The defaults are
+60 presentation lines per step and 3 unchanged context lines on each side of a
+hunk. Zero context is allowed. Context can change hunk grouping and presentation
+size; it does not change tree identity or code churn.
+
+```sh
+git-retell start demo --base main --target feature --worktree /tmp/demo --context 6
+git-retell validate demo --context 0 --budget 40 --json
+git-retell show demo --step 2 --context 12
+git-retell view demo --context 12
+```
+
+`validate`, `show`, and `view` use saved context unless you pass `--context`.
+Overrides apply only to that invocation. The validation report includes the
+context used for every presentation-size metric. Checks run code and do not need
+a diff context setting. Existing retellings without saved context use 3 lines.
+To update saved defaults later, use `git config retell.demo.context 6` or
+`git config retell.demo.budget 80`.
+
+## Listing and deleting retellings
+
+```sh
+git-retell list
+git-retell list --json
+git-retell delete demo
+git-retell delete demo --remove-worktree
+```
+
+`list` shows names, pinned endpoints, tips, step counts, saved settings, and
+attached worktrees. It includes unfinished and incomplete entries; use `validate`
+for the full correctness and budget report.
+
+`delete` removes the named synthetic branch, endpoint refs, and saved config,
+leaving real development branches intact. By default it refuses a checked-out
+retelling. Detach/remove its worktree yourself, or use `--remove-worktree` from
+another checkout to remove a clean, unlocked worktree too. Dirty, current, or
+locked worktrees are protected, including untracked and ignored files. Export a
+Git bundle first if you want to keep the retelling; deletion is not archival.
+
+## Suggested agent prompt
+
+The CLI does not prescribe an explanatory style. Here is an editable starting
+point that favors progressive refinement; change the style, budget, checks, and
+scope to suit your review. Replace the angle-bracket placeholders before use.
+
+```text
+Use git-retell to explain the change from <BASE> to <TARGET> as a new retelling
+named <NAME>, authored in <WORKTREE>. Use a budget of <LINES> and <CONTEXT> lines
+of diff context. Read git-retell --help and the relevant command help first.
+
+Favor progressive refinement. Establish the end-to-end behavior early, then
+fill in details. If the final implementation is too large for an opening step,
+introduce a small working version or clearly labeled stubs, and refine them.
+Group related changes into substantial, comprehensible steps rather than one
+slide per helper. Explain each step's purpose and any temporary limitations in
+its commit message. This is a preference, not a rule: choose another sequence
+when it makes the change easier to follow.
+
+Use ordinary Git commits. Start at the exact real base and finish at the exact
+real target tree, removing all temporary teaching code. Keep the history linear
+and label the commits as synthetic explanations. Validate every step's complete
+diff at the chosen context and budget. Report expansion and optional project
+checks as quality signals; intermediate commits do not all need to pass tests.
+Preserve existing retellings. Finish by giving me the view command and a concise
+summary of validation, metrics, and any limitations.
+```
 
 ## Checks
 
@@ -144,11 +213,12 @@ Git LFS content are not automatically fetched. No checks run unless requested.
 
 ## Pure Git storage
 
-For history `demo`, the only stored state is:
+For retelling `demo`, the only stored state is:
 
 - `refs/heads/retell/demo`: the ordinary synthetic commit chain.
 - `refs/retell/demo/base` and `refs/retell/demo/target`: pinned real commits.
 - Repository config `retell.demo.budget`: the default line budget.
+- Repository config `retell.demo.context`: the default context lines per hunk.
 
 Branch movement cannot silently move the pinned endpoints. There is no tutorial
 format or sidecar file. Commit messages should identify the synthetic nature
@@ -163,13 +233,13 @@ git bundle create demo.bundle refs/heads/retell/demo \
 git fetch /path/to/demo.bundle 'refs/heads/retell/demo:refs/heads/retell/demo' \
   'refs/retell/demo/*:refs/retell/demo/*'
 git config retell.demo.budget 40
+git config retell.demo.context 3
 ```
 
-`start` refuses an existing history or branch. It never resets the main checkout.
-To remove a finished authoring worktree, use `git worktree remove PATH`; the
-history stays available. To delete the history as well, delete its branch and
-both endpoint refs, then remove its `retell.demo` config section using ordinary
-Git. Review histories are not merged back into the real development branch.
+`start` refuses an existing retelling or branch. It never resets the main checkout.
+To remove just an authoring worktree, use `git worktree remove PATH`; its retelling
+stays available. Use `git-retell delete NAME` to remove the retelling's refs and
+settings too. Retellings are not merged back into the real development branch.
 
 ## Recursive dogfood
 
@@ -177,8 +247,8 @@ The first experiment is `dogfood`, explaining this implementation from the
 original scaffold. In the development repository, try:
 
 ```sh
-uv run git-retell validate dogfood
-uv run git-retell view dogfood
+git-retell validate dogfood
+git-retell view dogfood
 ```
 
 Its commits introduce simple versions before the final generalizations, then
@@ -189,7 +259,8 @@ refs. The explanatory branch has no special dependency on an authoring script.
 
 ## Development
 
-To contribute to this tool, use uv. The following command will establish the
+To contribute to this tool, use uv. Run `uv sync --locked` to install the locked
+dependencies. The following command will establish the
 virtual environment and run tests:
 
 ```sh
@@ -207,6 +278,9 @@ To run git-retell locally, use:
 ```sh
 uv run git-retell
 ```
+
+When running from source during retelling authoring, use the original checkout
+so the tool remains available while the synthetic implementation is incomplete.
 
 Tests exercise real temporary repositories and worktrees, including exact trees,
 nonlinear histories, diff budgets, binary patches, unusual paths, check cleanup,

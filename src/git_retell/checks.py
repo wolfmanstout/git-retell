@@ -7,20 +7,20 @@ import tempfile
 from pathlib import Path
 
 from .git import git
-from .history import History
+from .retelling import Retelling
 
 
-def check(history: History, command: tuple[str, ...], timeout: float) -> list[dict]:
+def check(retelling: Retelling, command: tuple[str, ...], timeout: float) -> list[dict]:
     results = []
-    for number, commit in enumerate(history.commits(), 1):
+    for number, commit in enumerate(retelling.commits(), 1):
         with tempfile.TemporaryDirectory(prefix="git-retell-check-") as directory:
             path = Path(directory) / "tree"
-            git(history.repo, "worktree", "add", "--detach", str(path), commit)
+            git(retelling.repo, "worktree", "add", "--detach", str(path), commit)
             try:
                 result = run_check(path, command, timeout)
                 results.append({"step": number, "commit": commit, **result})
             finally:
-                git(history.repo, "worktree", "remove", "--force", str(path))
+                git(retelling.repo, "worktree", "remove", "--force", str(path))
     return results
 
 

@@ -6,13 +6,13 @@ from click.testing import CliRunner
 from git_retell import checks
 from git_retell.cli import cli
 from git_retell.git import git
-from git_retell.history import inspect
+from git_retell.retelling import inspect
 
 from .helpers import commit, example, refresh
 
 
 def test_checks_report_failures_and_clean_worktrees(repo, tmp_path):
-    history, path = example(repo, tmp_path)
+    retelling, path = example(repo, tmp_path)
     (path / "code.txt").write_text("naive\n")
     commit(path, "Intermediate")
     (path / "code.txt").write_text("after\n")
@@ -29,7 +29,7 @@ def test_checks_report_failures_and_clean_worktrees(repo, tmp_path):
     assert result.exit_code == 1
     assert [r["passed"] for r in json.loads(result.output)] == [False, True]
     assert git(repo, "worktree", "list", "--porcelain") == before
-    assert inspect(refresh(history))["valid"]
+    assert inspect(refresh(retelling))["valid"]
 
 
 def test_check_timeout_and_missing_command(repo):

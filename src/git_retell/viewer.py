@@ -7,7 +7,7 @@ import unicodedata
 import click
 
 from .git import diff
-from .history import History, inspect
+from .retelling import Retelling, inspect
 
 
 def safe_text(text: str) -> str:
@@ -21,17 +21,18 @@ def safe_text(text: str) -> str:
 
 
 def slide(
-    history: History,
+    retelling: Retelling,
     commits: list[str],
     index: int,
     *,
-    context: int = 3,
+    context: int | None = None,
 ) -> str:
+    context = retelling.context if context is None else context
     commit = commits[index]
-    previous = history.base if index == 0 else commits[index - 1]
-    heading = f"SYNTHETIC explanatory history · {history.name} · {index + 1}/{len(commits)} · {commit[:8]}"
-    message = safe_text(history.message(commit))
-    patch = safe_text(diff(history.repo, previous, commit, context=context))
+    previous = retelling.base if index == 0 else commits[index - 1]
+    heading = f"SYNTHETIC explanatory retelling · {retelling.name} · {index + 1}/{len(commits)} · {commit[:8]}"
+    message = safe_text(retelling.message(commit))
+    patch = safe_text(diff(retelling.repo, previous, commit, context=context))
     return f"{heading}\n\n{message}\n\n{patch}"
 
 
@@ -92,23 +93,30 @@ def page(
     return "\n".join(frame), offset, height, max(0, len(lines) - height)
 
 
-def view(history: History) -> None:
+def view(retelling: Retelling, context: int | None = None) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise click.ClickException(
             "view needs a terminal. Use show NAME --all for plain output."
         )
-    commits = history.commits()
+    commits = retelling.commits()
     if not commits:
         raise click.ClickException(
             "No explanatory steps yet. Create commits in the authoring worktree."
         )
-    status = "VALID" if inspect(history)["valid"] else "INVALID"
-    index, context, offset = 0, 3, 0
+    initial_context = retelling.context if context is None else context
+    index, context, offset = 0, initial_context, 0
+    status = ""
+    validated_context = None
     cached = None
     content = ""
     while True:
+        if validated_context != context:
+            status = (
+                "VALID" if inspect(retelling, context=context)["valid"] else "INVALID"
+            )
+            validated_context = context
         if cached != (index, context):
-            content = slide(history, commits, index, context=context)
+            content = slide(retelling, commits, index, context=context)
             cached = (index, context)
         terminal = shutil.get_terminal_size()
         label = f"{status} {index + 1}/{len(commits)} U{context}"
@@ -142,6 +150,6 @@ def view(history: History) -> None:
         elif key == "-":
             context = max(0, context - 3)
         elif key == "0":
-            context = 3
+            context = initial_context
         if (index, context) != (old_index, old_context):
             offset = 0
