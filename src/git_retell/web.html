@@ -204,6 +204,21 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
   background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule-soft) 6px 7px);
 }
 .row.gap .cd { padding-left: 8px; opacity: .9; }
+.row.gap.scoped {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 11%, transparent), transparent 70%),
+    repeating-linear-gradient(135deg, transparent 0 6px, var(--rule-soft) 6px 7px);
+  box-shadow: inset 0 1px 0 var(--rule-soft), inset 0 -1px 0 var(--rule-soft);
+}
+.row.gap.scoped .no { color: color-mix(in srgb, var(--accent) 60%, var(--faint)); font-style: italic; }
+.row.gap.scoped .sg { color: color-mix(in srgb, var(--accent) 70%, var(--faint)); }
+.row.gap.scoped .cd { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 12px; opacity: 1; padding-left: 0; display: inline-flex; align-items: center; }
+.row.gap .sc { opacity: .72; }
+.row.gap .sep { color: var(--faint); margin: 0 8px; }
+.row.gap .gn {
+  font: 10.5px/16px -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; color: var(--muted);
+  border: 1px solid var(--rule); border-radius: 99px; padding: 0 7px; margin-right: 10px;
+}
 .row.note .cd { color: var(--muted); font-style: italic; }
 .row .cd i { font-style: normal; }
 .cd .k { color: var(--tk-k); } .cd .s { color: var(--tk-s); } .cd .c { color: var(--tk-c); font-style: italic; }
@@ -397,7 +412,8 @@ function buildCard(file, index) {
       while (e < merged.length && !show[e]) e++;
       const where = k === 0 ? " above" : e === merged.length ? " below" : "";
       const n = e - k;
-      rows.push({ key: "g:" + merged[k].id, kind: "gap", text: `${n} unchanged line${n === 1 ? "" : "s"}${where}` });
+      const scope = e < merged.length ? scopeOf(merged, show, e, file.path) : [];
+      rows.push({ key: "g:" + merged[k].id, kind: "gap", n, scope, text: `${n} unchanged line${n === 1 ? "" : "s"}${where}` });
       k = e;
     }
   }
@@ -420,6 +436,66 @@ function buildCard(file, index) {
   return card;
 }
 
+// Orient each hunk like git's function context, but as a chain of enclosing
+// scopes (class › method) found by indentation, or by heading level in Markdown.
+// Every less-indented line narrows the search; only definitions and other block
+// openers are shown, never control flow or the start of a wrapped statement.
+const CONTROL = /^(\}\s*)?(if|elif|else|for|foreach|while|with|try|except|finally|catch|switch|case|default|do|match|loop|unless|until|return|yield|await|raise|throw)\b/;
+const DEFINITION = /^((export|pub(\([\w:]+\))?|async|static|public|private|protected|abstract|final|override)\s+)*(def|class|function|func|fn|impl|struct|enum|interface|trait|module|namespace|type|object)\b/;
+const fences = new WeakMap();
+function indentOf(t) { return t.length - t.trimStart().length; }
+function isProse(id) {
+  const h = D.html[id], t = D.text[id].trimStart();
+  if (h != null) return /^\s*<i class="[cs]">/.test(h);
+  return /^(#|\/\/|\/\*|\*|--)/.test(t);
+}
+function isHeader(body, indent) {
+  if (CONTROL.test(body)) return false;
+  return DEFINITION.test(body) || /[:{]\s*$/.test(body) || indent === 0;
+}
+function inFence(merged) {
+  if (!fences.has(merged)) {
+    let open = false;
+    fences.set(merged, merged.map((r) => {
+      if (r.kind === "del") return true;
+      const fence = /^\s*(```|~~~)/.test(D.text[r.id]);
+      if (fence) open = !open;
+      return open || fence;
+    }));
+  }
+  return fences.get(merged);
+}
+function scopeOf(merged, show, start, path) {
+  const found = [];
+  if (/\.(md|markdown|mdx)$/i.test(path)) {
+    const fenced = inFence(merged);
+    let level = 7;
+    for (let k = start - 1; k >= 0 && level > 1; k--) {
+      if (fenced[k]) continue;
+      const m = /^(#{1,6})\s/.exec(D.text[merged[k].id]);
+      if (m && m[1].length < level) { level = m[1].length; if (!show[k]) found.push(merged[k]); }
+    }
+    // A lone H1 is usually the document title; keep it only when nothing is deeper.
+    if (found.length > 1 && /^#\s/.test(D.text[found[found.length - 1].id])) found.pop();
+  } else {
+    // The first visible line is where the reader lands, so orient from it.
+    let cur = 0;
+    for (let k = start; k < merged.length && show[k]; k++) {
+      const t = D.text[merged[k].id];
+      if (t.trim()) { cur = indentOf(t); break; }
+    }
+    for (let k = start - 1; k >= 0 && cur > 0; k--) {
+      const r = merged[k], t = D.text[r.id], body = t.trim();
+      if (r.kind === "del" || !body || indentOf(t) >= cur) continue;
+      if (/^[)\]}]/.test(body) && !CONTROL.test(body)) continue;
+      if (isProse(r.id)) continue;
+      cur = indentOf(t);
+      if (isHeader(body, cur) && !show[k]) found.push(r);
+    }
+  }
+  return found.reverse().slice(-3);
+}
+
 function buildModel() {
   const slide = D.slides[state.step];
   return { step: state.step, cards: slide.files.map((f) => buildCard(f, state.step)) };
@@ -439,11 +515,25 @@ function fillRow(el, r) {
   el.className = "row " + r.kind;
   const [no, sg, cd] = el.children;
   no.textContent = r.no ?? "";
-  sg.textContent = r.kind === "add" ? "+" : r.kind === "del" ? "−" : r.kind === "gap" ? "⋯" : "";
+  sg.textContent = r.kind === "add" ? "+" : r.kind === "del" ? "−" : r.kind === "gap" ? (r.scope && r.scope.length ? "↥" : "⋯") : "";
   if (r.id != null) {
     if (!el._filled) { cd.innerHTML = lineHtml(r.id) || " "; el._filled = true; }
+  } else if (r.scope && r.scope.length) {
+    const inner = r.scope[r.scope.length - 1];
+    el.classList.add("scoped");
+    no.textContent = inner.no;
+    el.title = `${r.n} hidden line${r.n === 1 ? "" : "s"}; enclosing scope from line ${inner.no}`;
+    const html = `<span class="gn">${r.n} hidden</span>`
+      + r.scope.map((h) => `<span class="sc">${lineHtml(h.id).replace(/^\s+/, "")}</span>`).join(`<span class="sep">›</span>`);
+    if (el._html !== html) {
+      if (el._html !== undefined && !reduced) cd.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: "ease-out" });
+      cd.innerHTML = html;
+      el._html = html;
+    }
   } else {
+    el.removeAttribute("title");
     cd.textContent = r.text;
+    el._html = undefined;
   }
 }
 

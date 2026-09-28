@@ -152,6 +152,11 @@ viewer can animate the difference between any two slides:
   which part of the file is visible and where it changed.
 - Files that leave the slide swipe away; files that join it slide in. New files
   are flagged with a highlighted header.
+- Like Git's hunk-header function context, a hidden stretch above a hunk names
+  its enclosing scopes, such as `class History › def load(...)`, with the
+  header's line number. Scopes come from indentation (definitions and other
+  block openers, not control flow) or from Markdown heading levels, and update
+  as you change context.
 
 A seek bar charts each step's additions and deletions. It labels the steps
 that introduce (◆) or delete (◇) files; hover for a step's subject and files,
