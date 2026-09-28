@@ -399,7 +399,7 @@ function buildCard(file, index) {
     for (let m = lo; m <= hi; m++) show[m] = 1;
   });
   if (state.full) show.fill(1);
-  let first = -1, last = -1;
+  let first = -1, last = -1, lastScope = "";
   for (let k = 0; k < merged.length;) {
     if (show[k]) {
       const r = merged[k];
@@ -412,7 +412,11 @@ function buildCard(file, index) {
       while (e < merged.length && !show[e]) e++;
       const where = k === 0 ? " above" : e === merged.length ? " below" : "";
       const n = e - k;
-      const scope = e < merged.length ? scopeOf(merged, show, e, file.path) : [];
+      let scope = e < merged.length ? scopeOf(merged, show, e, file.path) : [];
+      // Name a scope once; later gaps inside the same scope stay plain.
+      const sig = scope.map((h) => h.id).join();
+      if (sig && sig === lastScope) scope = [];
+      else if (sig) lastScope = sig;
       rows.push({ key: "g:" + merged[k].id, kind: "gap", n, scope, text: `${n} unchanged line${n === 1 ? "" : "s"}${where}` });
       k = e;
     }
