@@ -12,6 +12,7 @@ from .retelling import delete as delete_retelling
 from .retelling import start as start_retelling
 from .viewer import slide
 from .viewer import view as view_retelling
+from .web import web as web_retelling
 
 
 @click.group()
@@ -27,8 +28,9 @@ def cli():
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
-    budget. Show prints steps; view browses them interactively; check optionally
-    runs project commands. This tool does not generate explanations or call an LLM.
+    budget. Show prints steps; view browses them interactively; web opens an
+    animated browser slideshow; check optionally runs project commands. This
+    tool does not generate explanations or call an LLM.
 
     \b
     Example workflow (B and H are existing commits):
@@ -36,6 +38,7 @@ def cli():
       # Edit files in /tmp/demo, then git add and git commit with explanations.
       git-retell validate demo --json
       git-retell view demo --context 6
+      git-retell web demo
       git-retell list
 
     Use COMMAND --help for options, examples, and exit behavior. Defaults are
@@ -228,6 +231,51 @@ def view(name: str, context: int | None):
     A terminal is required. For a pipe, file, or pager, use show instead.
     """
     view_retelling(Retelling.load(root(), name), context=context)
+
+
+@cli.command()
+@click.argument("name")
+@click.option(
+    "--context",
+    type=click.IntRange(min=0),
+    help="Initial context; defaults to the retelling's saved setting.",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the page here instead of a temporary file.",
+)
+@click.option(
+    "--open/--no-open",
+    "open_browser",
+    default=True,
+    show_default=True,
+    help="Open the page in the default browser.",
+)
+def web(name: str, context: int | None, output: Path | None, open_browser: bool):
+    """Write a self-contained HTML slideshow and open it in a browser.
+
+    Transitions animate how each step connects to its neighbors: lines that
+    leave collapse, surviving lines move and recolor, new lines expand, and
+    files slide in or out. A seek bar charts each step's churn and marks where
+    files are introduced or deleted. Code is syntax highlighted.
+
+    \b
+    Keys: right/left or n/p: next/previous step. j/k: scroll.
+    +/-: add/remove 3 context lines; 0: reset; f: toggle whole files.
+    Home/End: first/last step. ?: help.
+
+    The page embeds every file version it shows, needs no server or network,
+    and can be shared as a single file. It is a snapshot; rerun after editing.
+
+    \b
+    Examples:
+      git-retell web demo
+      git-retell web demo --no-open -o demo.html
+    """
+    path = web_retelling(Retelling.load(root(), name), output, open_browser, context)
+    click.echo(f"Wrote {path}")
 
 
 @cli.command(context_settings={"ignore_unknown_options": True})

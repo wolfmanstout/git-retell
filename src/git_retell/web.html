@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root {
+  --bg: #0c0f14;
+  --panel: #10141b;
+  --card: #141922;
+  --card-head: #171d27;
+  --rule: #222a36;
+  --rule-soft: #1b222d;
+  --text: #d9dfe9;
+  --muted: #8591a3;
+  --faint: #4d5869;
+  --accent: #82aaff;
+  --accent-soft: rgba(130, 170, 255, .16);
+  --add: #3fb950;
+  --add-bg: rgba(63, 185, 80, .13);
+  --add-gutter: rgba(63, 185, 80, .22);
+  --del: #f0625b;
+  --del-bg: rgba(240, 98, 91, .09);
+  --del-gutter: rgba(240, 98, 91, .18);
+  --new: #e8b84a;
+  --new-soft: rgba(232, 184, 74, .16);
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 28px rgba(0,0,0,.35);
+  --tk-k: #c099ff; --tk-s: #a8d88a; --tk-c: #5f6b7d; --tk-n: #ff9e64;
+  --tk-f: #82aaff; --tk-t: #ffc777; --tk-d: #fca7ea; --tk-b: #65bcff;
+  --tk-g: #ff757f; --tk-a: #ffc777; --tk-o: #89ddff; --tk-h: #ffc777;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f4f3ef;
+  --panel: #fbfaf7;
+  --card: #ffffff;
+  --card-head: #faf9f6;
+  --rule: #e2dfd8;
+  --rule-soft: #eeebe5;
+  --text: #1f2430;
+  --muted: #6b7282;
+  --faint: #b1b5bf;
+  --accent: #3b64d8;
+  --accent-soft: rgba(59, 100, 216, .12);
+  --add: #1a7f37;
+  --add-bg: rgba(46, 160, 67, .12);
+  --add-gutter: rgba(46, 160, 67, .22);
+  --del: #cf222e;
+  --del-bg: rgba(207, 34, 46, .07);
+  --del-gutter: rgba(207, 34, 46, .16);
+  --new: #b7791f;
+  --new-soft: rgba(183, 121, 31, .13);
+  --shadow: 0 1px 2px rgba(20, 20, 30, .05), 0 8px 24px rgba(20, 20, 30, .06);
+  --tk-k: #8839ef; --tk-s: #40862b; --tk-c: #9199a6; --tk-n: #c4501a;
+  --tk-f: #1e5fd0; --tk-t: #a06200; --tk-d: #b8328f; --tk-b: #0b7ea8;
+  --tk-g: #c4262f; --tk-a: #a06200; --tk-o: #0f7d95; --tk-h: #a06200;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f3ef; --panel: #fbfaf7; --card: #ffffff; --card-head: #faf9f6;
+    --rule: #e2dfd8; --rule-soft: #eeebe5; --text: #1f2430; --muted: #6b7282;
+    --faint: #b1b5bf; --accent: #3b64d8; --accent-soft: rgba(59, 100, 216, .12);
+    --add: #1a7f37; --add-bg: rgba(46, 160, 67, .12); --add-gutter: rgba(46, 160, 67, .22);
+    --del: #cf222e; --del-bg: rgba(207, 34, 46, .07); --del-gutter: rgba(207, 34, 46, .16);
+    --new: #b7791f; --new-soft: rgba(183, 121, 31, .13);
+    --shadow: 0 1px 2px rgba(20, 20, 30, .05), 0 8px 24px rgba(20, 20, 30, .06);
+    --tk-k: #8839ef; --tk-s: #40862b; --tk-c: #9199a6; --tk-n: #c4501a;
+    --tk-f: #1e5fd0; --tk-t: #a06200; --tk-d: #b8328f; --tk-b: #0b7ea8;
+    --tk-g: #c4262f; --tk-a: #a06200; --tk-o: #0f7d95; --tk-h: #a06200;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+.mono, code, .rows { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; }
+
+/* Top bar */
+header.bar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--panel);
+  min-width: 0;
+}
+.brand { font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.brand span { color: var(--muted); font-weight: 450; }
+.tag {
+  font-size: 10.5px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 99px; border: 1px solid var(--rule); color: var(--muted);
+  white-space: nowrap;
+}
+.tag.valid { color: var(--add); border-color: color-mix(in srgb, var(--add) 40%, transparent); }
+.tag.invalid { color: var(--del); border-color: color-mix(in srgb, var(--del) 40%, transparent); }
+.spacer { flex: 1; }
+.controls { display: flex; gap: 6px; align-items: center; }
+.btn {
+  border: 1px solid var(--rule); background: transparent; border-radius: 7px;
+  height: 28px; min-width: 28px; padding: 0 9px; cursor: pointer; color: var(--muted);
+  font-size: 12.5px; transition: color .15s, border-color .15s, background .15s;
+}
+.btn:hover { color: var(--text); border-color: var(--faint); }
+.btn.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: var(--accent-soft); }
+.ctx-readout { font-size: 12px; color: var(--muted); min-width: 34px; text-align: center; }
+
+/* Main split */
+main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 0; }
+aside.story {
+  border-right: 1px solid var(--rule-soft);
+  padding: 28px 26px 20px;
+  overflow: auto; position: relative;
+}
+.story-inner { will-change: transform, opacity; }
+.stepno { display: flex; align-items: baseline; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.stepno b { font-size: 34px; line-height: 1; color: var(--text); font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.synthetic { display: inline-block; margin-top: 18px; font-size: 10.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+h1.subject { font-size: 21px; line-height: 1.3; letter-spacing: -.015em; font-weight: 640; margin: 6px 0 14px; text-wrap: balance; }
+.body p { margin: 0 0 10px; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
+.body ul { margin: 0 0 10px; padding-left: 18px; }
+.body code { font-size: .88em; padding: 1px 4px; border-radius: 4px; background: var(--rule-soft); }
+.meter { margin: 18px 0 20px; font-size: 12px; color: var(--muted); }
+.meter .track { height: 4px; border-radius: 3px; background: var(--rule-soft); overflow: hidden; margin-top: 6px; }
+.meter .fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s cubic-bezier(.2,.7,.2,1); }
+.meter.over .fill { background: var(--del); }
+.filelist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule-soft); }
+.filelist li {
+  display: flex; gap: 8px; align-items: center; padding: 7px 2px; font-size: 12.5px;
+  border-bottom: 1px solid var(--rule-soft); cursor: pointer; min-width: 0;
+}
+.filelist li:hover .fname { color: var(--text); }
+.fname { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; direction: rtl; text-align: left; }
+.fname b { color: var(--text); font-weight: 560; }
+.counts { font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.counts .a { color: var(--add); } .counts .d { color: var(--del); margin-left: 6px; }
+.badge {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+}
+.badge.new { color: var(--new); background: var(--new-soft); }
+.badge.gone { color: var(--del); background: var(--del-bg); }
+.badge.mode { color: var(--muted); background: var(--rule-soft); }
+
+/* Code stage */
+section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-behavior: auto; }
+.card {
+  background: var(--card); border: 1px solid var(--rule); border-radius: 11px;
+  margin-bottom: 18px; overflow: hidden; box-shadow: var(--shadow);
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+  background: var(--card-head); border-bottom: 1px solid var(--rule-soft);
+  position: relative;
+}
+.card-head .path { font-size: 12.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.card-head .path b { color: var(--text); font-weight: 600; }
+.card.is-new .card-head::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--new);
+}
+.card.is-gone .card-head::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--del);
+}
+.ruler { position: relative; width: 120px; height: 8px; border-radius: 4px; background: var(--rule-soft); flex: none; overflow: hidden; }
+.ruler .win {
+  position: absolute; top: 0; bottom: 0; border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: left .55s cubic-bezier(.3,.7,.2,1), width .55s cubic-bezier(.3,.7,.2,1);
+}
+.ruler .tick { position: absolute; top: 1px; bottom: 1px; width: 2px; border-radius: 1px; transition: left .55s cubic-bezier(.3,.7,.2,1), opacity .3s; }
+.ruler .tick.a { background: var(--add); } .ruler .tick.d { background: var(--del); }
+.rows { font-size: 12.5px; overflow-x: auto; overflow-y: hidden; padding: 6px 0; }
+.rows-inner { display: inline-block; min-width: 100%; }
+.row {
+  --lh: 21px;
+  display: flex; height: var(--lh); line-height: var(--lh); white-space: pre; overflow: hidden;
+  transition: background-color .45s ease;
+}
+.row .no {
+  flex: none; width: 52px; padding-right: 12px; text-align: right; color: var(--faint);
+  user-select: none; font-variant-numeric: tabular-nums; transition: color .45s, background-color .45s;
+}
+.row .sg { flex: none; width: 18px; text-align: center; user-select: none; color: transparent; transition: color .45s; }
+.row .cd { padding-right: 24px; transition: filter .5s ease, opacity .5s ease, color .5s ease; }
+.row.add { background: var(--add-bg); }
+.row.add .no { background: var(--add-gutter); color: color-mix(in srgb, var(--add) 80%, var(--text)); }
+.row.add .sg { color: var(--add); }
+.row.del { background: var(--del-bg); }
+.row.del .no { background: var(--del-gutter); color: color-mix(in srgb, var(--del) 70%, var(--text)); }
+.row.del .sg { color: var(--del); }
+.row.del .cd { filter: grayscale(1); opacity: .5; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--del) 45%, transparent); }
+.row.gap {
+  color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; font-size: 11.5px;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule-soft) 6px 7px);
+}
+.row.gap .cd { padding-left: 8px; opacity: .9; }
+.row.note .cd { color: var(--muted); font-style: italic; }
+.row .cd i { font-style: normal; }
+.cd .k { color: var(--tk-k); } .cd .s { color: var(--tk-s); } .cd .c { color: var(--tk-c); font-style: italic; }
+.cd .n { color: var(--tk-n); } .cd .f { color: var(--tk-f); } .cd .t { color: var(--tk-t); }
+.cd .d { color: var(--tk-d); } .cd .b { color: var(--tk-b); } .cd .g { color: var(--tk-g); }
+.cd .a { color: var(--tk-a); } .cd .o { color: var(--tk-o); } .cd .h { color: var(--tk-h); font-weight: 600; }
+.cd .e { font-style: italic; }
+.row.flash { animation: flash 1.1s ease-out; }
+@keyframes flash { from { box-shadow: inset 3px 0 0 var(--accent); } to { box-shadow: inset 3px 0 0 transparent; } }
+
+/* Seek bar */
+footer.seek {
+  border-top: 1px solid var(--rule-soft); background: var(--panel);
+  padding: 8px 20px 10px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: end;
+  user-select: none;
+}
+.nav { display: flex; gap: 6px; padding-bottom: 6px; }
+.nav .btn { width: 34px; height: 34px; border-radius: 9px; font-size: 15px; }
+.timeline { position: relative; height: 96px; cursor: pointer; touch-action: none; }
+.labels { position: absolute; left: 0; right: 0; top: 0; height: 30px; }
+.flag {
+  position: absolute; transform: translateX(-4px); font-size: 10.5px; line-height: 14px;
+  white-space: nowrap; color: var(--new); display: flex; align-items: center; gap: 4px; pointer-events: none;
+}
+.flag::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--new); border-radius: 1px; flex: none; }
+.flag.gone { color: var(--del); }
+.flag.gone::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--del); }
+.flag.dot span { display: none; }
+.track { position: absolute; left: 0; right: 0; top: 32px; height: 44px; }
+.track svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.track .axis { stroke: var(--rule); stroke-width: 1; }
+.track .pa { fill: var(--add); } .track .pd { fill: var(--del); }
+.track .future { opacity: .32; transition: opacity .3s; }
+.track .stem { stroke: var(--new); stroke-width: 1; stroke-dasharray: 2 2; opacity: .55; }
+.track .stem.gone { stroke: var(--del); }
+.playhead {
+  position: absolute; top: 28px; bottom: 18px; width: 2px; margin-left: -1px; background: var(--text);
+  border-radius: 2px; transition: left .45s cubic-bezier(.3,.7,.2,1); pointer-events: none;
+}
+.playhead::before {
+  content: attr(data-n); position: absolute; bottom: -1px; left: 50%; transform: translate(-50%, 100%);
+  font-size: 10.5px; font-weight: 700; background: var(--text); color: var(--bg); padding: 0 6px; border-radius: 99px; line-height: 16px;
+}
+.hover {
+  position: absolute; bottom: 100px; transform: translateX(-50%); max-width: 360px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 9px; box-shadow: var(--shadow);
+  padding: 8px 11px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .12s;
+  z-index: 5;
+}
+.hover.show { opacity: 1; }
+.hover .hs { color: var(--muted); font-size: 11px; }
+.hover .hn { color: var(--new); font-size: 11.5px; margin-top: 4px; }
+.hover .hg { color: var(--del); font-size: 11.5px; }
+
+/* Help */
+.help {
+  position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45);
+  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10;
+}
+.help.show { opacity: 1; pointer-events: auto; }
+.help > div { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow); }
+.help h2 { margin: 0 0 12px; font-size: 15px; }
+.help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
+.help dt { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+.help dd { margin: 0; color: var(--muted); }
+kbd { font: 11px ui-monospace, Menlo, monospace; }
+
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  main { grid-template-columns: 1fr; }
+  aside.story { border-right: 0; border-bottom: 1px solid var(--rule-soft); padding: 18px 16px; overflow: visible; }
+  section.stage { padding: 16px 12px 30vh; overflow: visible; }
+  header.bar { padding: 8px 16px; flex-wrap: wrap; }
+  footer.seek { position: sticky; bottom: 0; padding: 6px 16px 8px; }
+  .ruler { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">git-retell <span id="name"></span></div>
+  <span class="tag">Synthetic</span>
+  <span class="tag" id="status"></span>
+  <div class="spacer"></div>
+  <div class="controls">
+    <button class="btn" id="less" title="Less context (-)">−</button>
+    <span class="ctx-readout mono" id="ctx"></span>
+    <button class="btn" id="more" title="More context (+)">+</button>
+    <button class="btn" id="full" title="Whole files (f)">Whole files</button>
+    <button class="btn" id="theme" title="Theme (t)">◐</button>
+    <button class="btn" id="helpbtn" title="Keys (?)">?</button>
+  </div>
+</header>
+<main>
+  <aside class="story" id="story"></aside>
+  <section class="stage" id="stage"></section>
+</main>
+<footer class="seek">
+  <div class="nav">
+    <button class="btn" id="prev" title="Previous (←)">←</button>
+    <button class="btn" id="next" title="Next (→)">→</button>
+  </div>
+  <div class="timeline" id="timeline">
+    <div class="labels" id="labels"></div>
+    <div class="track" id="track"></div>
+    <div class="playhead" id="playhead"></div>
+    <div class="hover" id="hover"></div>
+  </div>
+</footer>
+<div class="help" id="help"><div>
+  <h2>Keys</h2>
+  <dl>
+    <dt>→ n l space</dt><dd>Next step</dd>
+    <dt>← p h</dt><dd>Previous step</dd>
+    <dt>Home / End</dt><dd>First / last step</dd>
+    <dt>j / k</dt><dd>Scroll code</dd>
+    <dt>+ / −</dt><dd>More / less context</dd>
+    <dt>0</dt><dd>Reset context</dd>
+    <dt>f</dt><dd>Toggle whole files</dd>
+    <dt>t</dt><dd>Toggle theme</dd>
+    <dt>?</dt><dd>This help</dd>
+  </dl>
+</div></div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = (id) => document.getElementById(id);
+const stage = $("stage"), story = $("story");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const EASE = "cubic-bezier(.3,.7,.2,1)";
+const ROW_H = 21;
+
+const state = { step: 0, ctx: D.context, full: false };
+let shown = null;      // model currently displayed (or being animated to)
+let gen = 0;           // transition generation; stale continuations bail out
+let running = [];      // animations of the transition in flight
+let lastNav = 0;
+
+// ---------- Model ----------
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+function lineHtml(id) {
+  const h = D.html[id];
+  return h == null ? esc(D.text[id]) : h;
+}
+function splitPath(p) {
+  const i = p.lastIndexOf("/");
+  return i < 0 ? ["", p] : [p.slice(0, i + 1), p.slice(i + 1)];
+}
+
+function buildCard(file, index) {
+  const rows = [];
+  const card = { key: "f:" + file.path, file, rows, total: 0, win: [0, 0], ticks: [] };
+  if (file.binary) {
+    rows.push({ key: `n:${index}:${file.path}`, kind: "note", text: "Binary file changed" });
+    return card;
+  }
+  const before = D.versions[file.before], after = D.versions[file.after];
+  const inAfter = new Set(after), inBefore = new Set(before);
+  const merged = [];
+  let i = 0, j = 0;
+  while (i < before.length || j < after.length) {
+    if (i < before.length && !inAfter.has(before[i])) { merged.push({ id: before[i], kind: "del", no: i + 1 }); i++; }
+    else if (j < after.length && !inBefore.has(after[j])) { merged.push({ id: after[j], kind: "add", no: j + 1 }); j++; }
+    else { merged.push({ id: after[j], kind: "ctx", no: j + 1 }); i++; j++; }
+  }
+  card.total = merged.length;
+  const ctx = state.full ? Infinity : state.ctx;
+  const show = new Uint8Array(merged.length);
+  let changed = 0;
+  merged.forEach((r, k) => {
+    if (r.kind === "ctx") return;
+    changed++;
+    const lo = Math.max(0, k - ctx), hi = Math.min(merged.length - 1, k + ctx);
+    for (let m = lo; m <= hi; m++) show[m] = 1;
+  });
+  if (state.full) show.fill(1);
+  let first = -1, last = -1;
+  for (let k = 0; k < merged.length;) {
+    if (show[k]) {
+      const r = merged[k];
+      rows.push({ key: "l:" + r.id, kind: r.kind, id: r.id, no: r.no });
+      if (first < 0) first = k;
+      last = k;
+      k++;
+    } else {
+      let e = k;
+      while (e < merged.length && !show[e]) e++;
+      const where = k === 0 ? " above" : e === merged.length ? " below" : "";
+      const n = e - k;
+      rows.push({ key: "g:" + merged[k].id, kind: "gap", text: `${n} unchanged line${n === 1 ? "" : "s"}${where}` });
+      k = e;
+    }
+  }
+  if (!changed && file.oldMode !== file.newMode) {
+    rows.unshift({ key: `n:${index}:${file.path}`, kind: "note", text: `mode ${file.oldMode} → ${file.newMode}` });
+  }
+  if (!merged.length && !rows.length) {
+    rows.push({ key: `n:${index}:${file.path}`, kind: "note", text: "Empty file" });
+  }
+  if (merged.length) {
+    card.win = first < 0 ? [0, 0] : [first / merged.length, (last + 1) / merged.length];
+    const bins = new Map();
+    merged.forEach((r, k) => {
+      if (r.kind === "ctx") return;
+      const b = Math.floor((k / merged.length) * 60);
+      bins.set(b + r.kind, { at: b / 60, kind: r.kind });
+    });
+    card.ticks = [...bins.values()];
+  }
+  return card;
+}
+
+function buildModel() {
+  const slide = D.slides[state.step];
+  return { step: state.step, cards: slide.files.map((f) => buildCard(f, state.step)) };
+}
+
+// ---------- DOM ----------
+
+function rowEl(r) {
+  const el = document.createElement("div");
+  el.className = "row " + r.kind;
+  el.dataset.key = r.key;
+  el.innerHTML = `<span class="no"></span><span class="sg"></span><span class="cd"></span>`;
+  fillRow(el, r);
+  return el;
+}
+function fillRow(el, r) {
+  el.className = "row " + r.kind;
+  const [no, sg, cd] = el.children;
+  no.textContent = r.no ?? "";
+  sg.textContent = r.kind === "add" ? "+" : r.kind === "del" ? "−" : r.kind === "gap" ? "⋯" : "";
+  if (r.id != null) {
+    if (!el._filled) { cd.innerHTML = lineHtml(r.id) || " "; el._filled = true; }
+  } else {
+    cd.textContent = r.text;
+  }
+}
+
+function cardHead(card) {
+  const f = card.file;
+  const [dir, base] = splitPath(f.path);
+  let badges = "";
+  if (f.status === "A") badges += `<span class="badge new">New file</span>`;
+  if (f.status === "D") badges += `<span class="badge gone">Deleted</span>`;
+  if (f.oldMode !== f.newMode && f.status !== "A" && f.status !== "D") badges += `<span class="badge mode">${esc(f.oldMode)} → ${esc(f.newMode)}</span>`;
+  const counts = f.binary ? `<span class="counts">binary</span>`
+    : `<span class="counts"><span class="a">+${f.added}</span><span class="d">−${f.deleted}</span></span>`;
+  return `<div class="path mono">${esc(dir)}<b>${esc(base)}</b></div>${badges}${counts}<div class="ruler"><div class="win"></div></div>`;
+}
+
+function cardEl(card) {
+  const el = document.createElement("div");
+  el.className = "card";
+  el.dataset.key = card.key;
+  el.innerHTML = `<div class="card-head"></div><div class="rows"><div class="rows-inner"></div></div>`;
+  updateCardHead(el, card);
+  const inner = el.querySelector(".rows-inner");
+  for (const r of card.rows) inner.appendChild(rowEl(r));
+  return el;
+}
+
+function updateCardHead(el, card) {
+  el.classList.toggle("is-new", card.file.status === "A");
+  el.classList.toggle("is-gone", card.file.status === "D");
+  const head = el.querySelector(".card-head");
+  const ruler = head.querySelector(".ruler");
+  const win = ruler ? ruler.querySelector(".win") : null;
+  // Keep the ruler element so its window slides between slides.
+  const fresh = document.createElement("div");
+  fresh.innerHTML = cardHead(card);
+  const newRuler = fresh.querySelector(".ruler");
+  if (ruler) fresh.replaceChild(ruler, newRuler);
+  head.replaceChildren(...fresh.childNodes);
+  const r = head.querySelector(".ruler");
+  const w = r.querySelector(".win");
+  w.style.left = (card.win[0] * 100).toFixed(2) + "%";
+  w.style.width = Math.max(2, (card.win[1] - card.win[0]) * 100).toFixed(2) + "%";
+  r.querySelectorAll(".tick").forEach((t) => t.remove());
+  for (const t of card.ticks) {
+    const tk = document.createElement("div");
+    tk.className = "tick " + (t.kind === "add" ? "a" : "d");
+    tk.style.left = (t.at * 100).toFixed(2) + "%";
+    r.appendChild(tk);
+  }
+  r.style.display = card.total ? "" : "none";
+  r.title = card.total ? `Visible part of ${card.total} lines` : "";
+  void win;
+}
+
+function renderStory(dir) {
+  const s = D.slides[state.step];
+  let subject = s.subject, synthetic = false;
+  const m = subject.match(/^synthetic:\s*/i);
+  if (m) { subject = subject.slice(m[0].length); synthetic = true; }
+  const paras = s.body ? s.body.split(/\n\s*\n/) : [];
+  const body = paras.map((p) => {
+    const lines = p.split("\n");
+    if (lines.every((l) => /^\s*[-*]\s/.test(l))) {
+      return "<ul>" + lines.map((l) => `<li>${inline(l.replace(/^\s*[-*]\s/, ""))}</li>`).join("") + "</ul>";
+    }
+    return `<p>${inline(lines.join(" "))}</p>`;
+  }).join("");
+  const over = s.lines > D.budget;
+  const pct = Math.min(100, (s.lines / D.budget) * 100);
+  const files = s.files.map((f, k) => {
+    const [dir, base] = splitPath(f.path);
+    const badge = f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "";
+    const counts = f.binary ? "binary" : `<span class="a">+${f.added}</span><span class="d">−${f.deleted}</span>`;
+    return `<li data-k="${k}"><span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span>${badge}<span class="counts">${counts}</span></li>`;
+  }).join("");
+  const html = `<div class="story-inner">
+    <div class="stepno"><b>${state.step + 1}</b><span>of ${D.slides.length} · <span class="mono">${s.commit.slice(0, 8)}</span></span></div>
+    <span class="synthetic">${synthetic ? "Synthetic step" : "Step"}</span>
+    <h1 class="subject">${inline(subject)}</h1>
+    <div class="body">${body}</div>
+    <div class="meter${over ? " over" : ""}">${s.lines} of ${D.budget} diff lines at U${D.context}
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>
+    <ul class="filelist">${files}</ul>
+  </div>`;
+  const old = story.querySelector(".story-inner");
+  const oldFill = old && old.querySelector(".fill");
+  story.innerHTML = html;
+  const inner = story.querySelector(".story-inner");
+  if (oldFill) {
+    // Let the budget meter glide from its previous value.
+    const fill = inner.querySelector(".fill");
+    fill.style.transition = "none";
+    fill.style.width = oldFill.style.width;
+    requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.transition = ""; fill.style.width = pct + "%"; }));
+  }
+  inner.querySelectorAll(".filelist li").forEach((li) => li.addEventListener("click", () => {
+    const el = stage.children[+li.dataset.k];
+    if (el) stage.scrollTo({ top: el.offsetTop - 16, behavior: "smooth" });
+  }));
+  if (dir && !reduced) {
+    track(inner.animate(
+      [{ opacity: 0, transform: `translateY(${dir * 14}px)` }, { opacity: 1, transform: "none" }],
+      { duration: 420, easing: EASE, delay: 120, fill: "backwards" }));
+  }
+}
+function inline(t) {
+  return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function track(anim) { running.push(anim); return anim; }
+function done(anims) { return Promise.all(anims.map((a) => a.finished.catch(() => {}))); }
+
+// Build everything from scratch: used for first paint and to settle interruptions.
+function paint(model) {
+  stage.replaceChildren(...model.cards.map(cardEl));
+  shown = model;
+}
+
+// ---------- Transitions ----------
+
+function settle() {
+  for (const a of running) { try { a.cancel(); } catch (e) {} }
+  running = [];
+  if (shown) {
+    const top = stage.scrollTop;
+    paint(shown);
+    stage.scrollTop = top;
+  }
+}
+
+function anchorOf(model) {
+  for (const c of model.cards) for (const r of c.rows) if (r.kind === "add" || r.kind === "del") return r.key;
+  return null;
+}
+
+async function go(dir) {
+  const target = buildModel();
+  const my = ++gen;
+  const now = performance.now();
+  const hurried = now - lastNav < 380;   // key held down or rapid clicks: move faster
+  lastNav = now;
+  const busy = running.length > 0;
+  if (busy) settle();
+  updateChrome();
+  renderStory(dir);
+  if (!shown || reduced || document.hidden) { paint(target); scrollToAnchor(target, false); return; }
+
+  const speed = hurried || busy ? 0.55 : 1;
+  const T = (ms) => ms * speed;
+  const from = shown;
+  shown = target;
+  const cardEls = new Map([...stage.children].map((el) => [el.dataset.key, el]));
+  const targetCards = new Map(target.cards.map((c) => [c.key, c]));
+  const exits = [];
+
+  // Phase 1: whatever the next slide doesn't show leaves.
+  for (const [key, el] of cardEls) {
+    if (targetCards.has(key)) continue;
+    const h = el.offsetHeight;
+    const dx = (dir || 1) * -70;
+    exits.push(track(el.animate([
+      { opacity: 1, transform: "none", height: h + "px", marginBottom: "18px" },
+      { opacity: 0, transform: `translateX(${dx}px) scale(.985)`, height: h + "px", marginBottom: "18px", offset: .5 },
+      { opacity: 0, transform: `translateX(${dx}px) scale(.985)`, height: "0px", marginBottom: "0px", borderWidth: "0px" },
+    ], { duration: T(520), easing: EASE, fill: "forwards" })));
+  }
+  const rowMaps = new Map();
+  for (const c of target.cards) {
+    const el = cardEls.get(c.key);
+    if (!el) continue;
+    const want = new Map(c.rows.map((r) => [r.key, r]));
+    const rows = new Map();
+    for (const rel of el.querySelector(".rows-inner").children) {
+      const r = want.get(rel.dataset.key);
+      if (r) {
+        rows.set(rel.dataset.key, rel);
+        // Surviving lines recolor in place: green settles, doomed lines fade to gray.
+        fillRow(rel, r);
+      } else {
+        rel.dataset.leaving = "1";
+        exits.push(track(rel.animate(
+          [{ height: ROW_H + "px", opacity: 1 }, { height: "0px", opacity: 0 }],
+          { duration: T(300), easing: EASE, fill: "forwards" })));
+      }
+    }
+    rowMaps.set(c.key, rows);
+    updateCardHead(el, c);
+  }
+  await done(exits);
+  if (my !== gen) return;
+
+  // Phase 2: reorder, then new lines and files grow into place while the view follows.
+  for (const el of stage.querySelectorAll('.row[data-leaving="1"]')) el.remove();
+  for (const [key, el] of cardEls) if (!targetCards.has(key)) el.remove();
+  const enters = [];
+  let prev = null;
+  target.cards.forEach((c, ci) => {
+    let el = cardEls.get(c.key);
+    if (!el) {
+      el = cardEl(c);
+      stage.insertBefore(el, prev ? prev.nextSibling : stage.firstChild);
+      const h = el.offsetHeight;
+      const dx = (dir || 1) * 70;
+      enters.push(track(el.animate([
+        { opacity: 0, transform: `translateX(${dx}px) scale(.985)`, height: "0px", marginBottom: "0px" },
+        { opacity: 0, transform: `translateX(${dx}px) scale(.985)`, height: h + "px", marginBottom: "18px", offset: .4 },
+        { opacity: 1, transform: "none", height: h + "px", marginBottom: "18px" },
+      ], { duration: T(560), easing: EASE, delay: T(ci * 50) })));
+      if (c.file.status === "A") {
+        const head = el.querySelector(".card-head");
+        enters.push(track(head.animate(
+          [{ backgroundColor: "var(--new-soft)" }, { backgroundColor: "var(--new-soft)", offset: .5 }, { backgroundColor: "var(--card-head)" }],
+          { duration: T(1600), easing: "ease-out" })));
+      }
+    } else {
+      if (el.previousElementSibling !== prev) stage.insertBefore(el, prev ? prev.nextSibling : stage.firstChild);
+      const inner = el.querySelector(".rows-inner");
+      const rows = rowMaps.get(c.key);
+      let before = null, stagger = 0;
+      for (const r of c.rows) {
+        let rel = rows.get(r.key);
+        if (!rel) {
+          rel = rowEl(r);
+          inner.insertBefore(rel, before ? before.nextSibling : inner.firstChild);
+          enters.push(track(rel.animate(
+            [{ height: "0px", opacity: 0 }, { height: ROW_H + "px", opacity: 1 }],
+            { duration: T(340), easing: EASE, delay: T(Math.min(stagger, 26) * 9), fill: "backwards" })));
+          stagger++;
+        } else {
+          if (rel.previousElementSibling !== before) inner.insertBefore(rel, before ? before.nextSibling : inner.firstChild);
+          stagger = 0;
+        }
+        before = rel;
+      }
+    }
+    prev = el;
+  });
+  followScroll(target, my, T(720));
+  await done(enters);
+  if (my !== gen) return;
+  running = [];
+}
+
+function anchorTop(key) {
+  const el = key && stage.querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (!el) return 0;
+  const a = el.getBoundingClientRect().top, b = stage.getBoundingClientRect().top;
+  return stage.scrollTop + (a - b);
+}
+function desiredScroll(model) {
+  const key = anchorOf(model);
+  const max = stage.scrollHeight - stage.clientHeight;
+  return Math.max(0, Math.min(max, anchorTop(key) - stage.clientHeight * 0.22 - ROW_H * 3));
+}
+function scrollToAnchor(model) { stage.scrollTop = desiredScroll(model); }
+
+// Glide toward the first change while lines expand, re-aiming as the layout grows.
+function followScroll(model, my, duration) {
+  const start = performance.now(), from = stage.scrollTop;
+  const step = (t) => {
+    if (my !== gen) return;
+    const p = Math.min(1, (t - start) / duration);
+    const e = 1 - Math.pow(1 - p, 3);
+    stage.scrollTop = from + (desiredScroll(model) - from) * e;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ---------- Chrome ----------
+
+function updateChrome() {
+  $("ctx").textContent = state.full ? "all" : "U" + state.ctx;
+  $("full").classList.toggle("on", state.full);
+  $("prev").disabled = state.step === 0;
+  $("next").disabled = state.step === D.slides.length - 1;
+  const x = xOf(state.step);
+  const ph = $("playhead");
+  ph.style.left = x * 100 + "%";
+  ph.dataset.n = state.step + 1;
+  document.querySelectorAll("#track [data-s]").forEach((g) => g.classList.toggle("future", +g.dataset.s > state.step));
+  try { history.replaceState(null, "", "#" + (state.step + 1)); } catch (e) {}
+}
+
+function xOf(i) { return (i + 0.5) / D.slides.length; }
+
+function buildTimeline() {
+  const n = D.slides.length;
+  const churn = D.slides.map((s) => s.files.reduce((a, f) => [a[0] + f.added, a[1] + f.deleted], [0, 0]));
+  const peak = Math.max(1, ...churn.map(([a, d]) => Math.max(a, d)));
+  const H = 44, mid = 22, scale = (v) => v ? Math.max(1.5, Math.sqrt(v / peak) * (mid - 3)) : 0;
+  const bw = Math.max(1, Math.min(14, 1000 / n * 0.6));
+  let svg = `<svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none"><line class="axis" x1="0" x2="1000" y1="${mid}" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
+  D.slides.forEach((s, i) => {
+    const cx = xOf(i) * 1000, [a, d] = churn[i];
+    const introduced = s.files.some((f) => f.status === "A"), removed = s.files.some((f) => f.status === "D");
+    svg += `<g data-s="${i}">`;
+    if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="-4" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
+    svg += `<rect class="pa" x="${cx - bw / 2}" y="${mid - scale(a)}" width="${bw}" height="${scale(a)}" rx="1"/>`;
+    svg += `<rect class="pd" x="${cx - bw / 2}" y="${mid}" width="${bw}" height="${scale(d)}" rx="1"/></g>`;
+  });
+  $("track").innerHTML = svg + "</svg>";
+  layoutFlags();
+}
+
+// Label steps that introduce or delete files; crowded labels collapse to markers.
+function layoutFlags() {
+  const labels = $("labels");
+  labels.replaceChildren();
+  const width = labels.clientWidth || 800;
+  const lanes = [-Infinity, -Infinity];
+  D.slides.forEach((s, i) => {
+    const added = s.files.filter((f) => f.status === "A"), gone = s.files.filter((f) => f.status === "D");
+    for (const [list, cls] of [[added, ""], [gone, "gone"]]) {
+      if (!list.length) continue;
+      const name = splitPath(list[0].path)[1] + (list.length > 1 ? ` +${list.length - 1}` : "");
+      const el = document.createElement("div");
+      el.className = "flag " + cls;
+      el.innerHTML = `<span>${esc((cls ? "−" : "") + name)}</span>`;
+      const x = xOf(i) * width;
+      el.style.left = x + "px";
+      labels.appendChild(el);
+      const w = el.offsetWidth + 10;
+      let lane = lanes.findIndex((end) => x - 4 >= end);
+      if (lane < 0 || x + w > width + 8) { el.classList.add("dot"); lane = 1; }
+      else lanes[lane] = x + w;
+      el.style.top = (lane === 0 ? 0 : 15) + "px";
+      if (el.classList.contains("dot")) el.style.top = "15px";
+    }
+  });
+}
+
+function stepAt(clientX) {
+  const r = $("timeline").getBoundingClientRect();
+  const i = Math.floor(((clientX - r.left) / r.width) * D.slides.length);
+  return Math.max(0, Math.min(D.slides.length - 1, i));
+}
+
+function showHover(i) {
+  const s = D.slides[i], hv = $("hover");
+  const added = s.files.filter((f) => f.status === "A").map((f) => f.path);
+  const gone = s.files.filter((f) => f.status === "D").map((f) => f.path);
+  hv.innerHTML = `<div class="hs">Step ${i + 1} · ${s.lines} lines</div><div>${inline(s.subject.replace(/^synthetic:\s*/i, ""))}</div>`
+    + added.map((p) => `<div class="hn">+ ${esc(p)}</div>`).join("")
+    + gone.map((p) => `<div class="hg">− ${esc(p)}</div>`).join("");
+  const w = $("timeline").clientWidth;
+  const x = xOf(i) * w;
+  hv.style.left = Math.max(140, Math.min(w - 140, x)) + "px";
+  hv.classList.add("show");
+}
+
+// ---------- Input ----------
+
+function goto(i) {
+  i = Math.max(0, Math.min(D.slides.length - 1, i));
+  if (i === state.step) return;
+  const dir = Math.sign(i - state.step);
+  state.step = i;
+  go(dir);
+}
+function setContext(fn) {
+  const old = [state.ctx, state.full];
+  fn();
+  if (old[0] !== state.ctx || old[1] !== state.full) go(0);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if ($("help").classList.contains("show") && k !== "?") { $("help").classList.remove("show"); if (k === "Escape") return; }
+  if (["ArrowRight", "n", "l", " "].includes(k)) goto(state.step + (e.shiftKey && k === " " ? -1 : 1));
+  else if (["ArrowLeft", "p", "h"].includes(k)) goto(state.step - 1);
+  else if (k === "Home") goto(0);
+  else if (k === "End") goto(D.slides.length - 1);
+  else if (k === "j" || k === "ArrowDown") { stage.scrollBy({ top: ROW_H * 3 }); }
+  else if (k === "k" || k === "ArrowUp") { stage.scrollBy({ top: -ROW_H * 3 }); }
+  else if (k === "+" || k === "=") setContext(() => { state.full = false; state.ctx += 3; });
+  else if (k === "-" || k === "_") setContext(() => { state.full = false; state.ctx = Math.max(0, state.ctx - 3); });
+  else if (k === "0") setContext(() => { state.full = false; state.ctx = D.context; });
+  else if (k === "f") setContext(() => { state.full = !state.full; });
+  else if (k === "t") toggleTheme();
+  else if (k === "?") $("help").classList.toggle("show");
+  else return;
+  e.preventDefault();
+});
+$("prev").onclick = () => goto(state.step - 1);
+$("next").onclick = () => goto(state.step + 1);
+$("more").onclick = () => setContext(() => { state.full = false; state.ctx += 3; });
+$("less").onclick = () => setContext(() => { state.full = false; state.ctx = Math.max(0, state.ctx - 3); });
+$("full").onclick = () => setContext(() => { state.full = !state.full; });
+$("helpbtn").onclick = () => $("help").classList.toggle("show");
+$("help").onclick = () => $("help").classList.remove("show");
+$("theme").onclick = toggleTheme;
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("git-retell-theme", root.dataset.theme); } catch (e) {}
+}
+
+const tl = $("timeline");
+let dragging = false;
+tl.addEventListener("pointerdown", (e) => { dragging = true; tl.setPointerCapture(e.pointerId); goto(stepAt(e.clientX)); });
+tl.addEventListener("pointermove", (e) => { const i = stepAt(e.clientX); showHover(i); if (dragging) goto(i); });
+tl.addEventListener("pointerup", () => { dragging = false; });
+tl.addEventListener("pointerleave", () => $("hover").classList.remove("show"));
+addEventListener("resize", layoutFlags);
+
+// ---------- Start ----------
+
+try { const t = localStorage.getItem("git-retell-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("name").textContent = D.name;
+$("status").textContent = D.valid ? "Valid" : "Invalid";
+$("status").className = "tag " + (D.valid ? "valid" : "invalid");
+$("status").title = D.valid ? `Every step fits ${D.budget} lines at U${D.context}` : D.issues.join("\n");
+const fromHash = parseInt(location.hash.slice(1), 10);
+if (fromHash >= 1 && fromHash <= D.slides.length) state.step = fromHash - 1;
+buildTimeline();
+go(0);
+</script>
+</body>
+</html>

@@ -8,7 +8,8 @@ license-files = ["LICENSE"]
 authors = [{name = "James Stout"}]
 requires-python = ">=3.11"
 dependencies = [
-    "click"
+    "click",
+    "pygments",
 ]
 
 [build-system]

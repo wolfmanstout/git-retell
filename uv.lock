@@ -38,6 +38,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "pygments" },
 ]
 
 [package.dev-dependencies]
@@ -47,7 +48,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "click" }]
+requires-dist = [
+    { name = "click" },
+    { name = "pygments" },
+]
 
 [package.metadata.requires-dev]
 dev = [

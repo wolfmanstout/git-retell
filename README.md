@@ -10,7 +10,8 @@ Synthetic Git histories for code review
 Explain a real code transformation **B → H** with a synthetic Git history
 **B → S1 → S2 → … → H**. Each commit is a slide; its message explains its diff.
 An agent or human authors the steps. This CLI supplies the authoring worktree,
-validation, metrics, optional checks, and terminal slideshow. No LLM API required.
+validation, metrics, optional checks, and terminal and browser slideshows. No
+LLM API required.
 
 The endpoints must be exact. Intermediate implementations can be temporary,
 change the same lines repeatedly, or fail tests. They are explanations, not a
@@ -69,6 +70,7 @@ git-retell start demo --base HEAD~1 --target HEAD \
 git-retell validate demo --json
 git-retell show demo --step 1
 git-retell view demo
+git-retell web demo
 git-retell check demo --timeout 60 -- pytest
 git-retell list
 ```
@@ -130,6 +132,36 @@ saved settings and code churn remain unchanged. The VALID/INVALID status is
 recomputed at the displayed context, so expanding context can exceed the budget.
 `show NAME --all` prints every slide for a pager or text export. Terminal controls
 are visibly escaped and tabs expanded. The MVP budgets lines, not reading time.
+
+## Web viewer
+
+`git-retell web NAME` writes a self-contained HTML slideshow and opens it in
+your browser. Use `-o FILE` to choose where it is written and `--no-open` to
+skip the browser. The page needs no server or network access, so the file can
+be shared as is. It is a snapshot: rerun the command after editing the history.
+
+Transitions show how each step connects to its neighbors. Every line keeps one
+identity for as long as it is unchanged, using Git's own line matching, so the
+viewer can animate the difference between any two slides:
+
+- Lines the next slide no longer shows collapse; new lines expand into place.
+- Lines added in one step settle from green to plain context in the next;
+  context lines the next step deletes fade to gray.
+- Moving to another part of the same file collapses the old hunk, glides the
+  view, and expands the new hunk. Each file header has a small ruler showing
+  which part of the file is visible and where it changed.
+- Files that leave the slide swipe away; files that join it slide in. New files
+  are flagged with a highlighted header.
+
+A seek bar charts each step's additions and deletions. It labels the steps
+that introduce (◆) or delete (◇) files; hover for a step's subject and files,
+and click or drag to jump. Code is syntax highlighted with Pygments.
+
+Web viewer controls: right/left arrow, `n`/`p`, or space: next and previous step.
+Home/End: first/last step. `j`/`k`: scroll. `+`/`-`: context, `0`: reset, `f`:
+whole files. `t`: theme. `?`: help. The URL fragment remembers the step.
+The VALID/INVALID badge reflects the context given on the command line. Like
+`view`, live context changes in the page do not revalidate or change settings.
 
 ## Configuration
 
@@ -285,4 +317,5 @@ so the tool remains available while the synthetic implementation is incomplete.
 Tests exercise real temporary repositories and worktrees, including exact trees,
 nonlinear histories, diff budgets, binary patches, unusual paths, check cleanup,
 and terminal navigation. The MVP deliberately has no AST renderer, sidecars,
-web UI, automatic synthesis backend, or requirement that intermediate steps pass.
+web server, automatic synthesis backend, or requirement that intermediate steps
+pass.
