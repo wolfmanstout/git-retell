@@ -598,13 +598,7 @@ function renderStory(dir) {
   const m = subject.match(/^synthetic:\s*/i);
   if (m) { subject = subject.slice(m[0].length); synthetic = true; }
   const paras = s.body ? s.body.split(/\n\s*\n/) : [];
-  const body = paras.map((p) => {
-    const lines = p.split("\n");
-    if (lines.every((l) => /^\s*[-*]\s/.test(l))) {
-      return "<ul>" + lines.map((l) => `<li>${inline(l.replace(/^\s*[-*]\s/, ""))}</li>`).join("") + "</ul>";
-    }
-    return `<p>${inline(lines.join(" "))}</p>`;
-  }).join("");
+  const body = paras.map(renderParagraph).join("");
   const over = s.lines > D.budget;
   const pct = Math.min(100, (s.lines / D.budget) * 100);
   const files = s.files.map((f, k) => {
@@ -642,6 +636,30 @@ function renderStory(dir) {
       [{ opacity: 0, transform: `translateY(${dir * 14}px)` }, { opacity: 1, transform: "none" }],
       { duration: 420, easing: EASE, delay: 120, fill: "backwards" }));
   }
+}
+// Hard-wrapped prose reflows; a bullet's indented continuation lines join it.
+function renderParagraph(p) {
+  const out = [];
+  let text = [], items = null;
+  const flush = () => {
+    if (text.length) out.push(`<p>${inline(text.join(" "))}</p>`);
+    if (items) out.push("<ul>" + items.map((i) => `<li>${inline(i.join(" "))}</li>`).join("") + "</ul>");
+    text = []; items = null;
+  };
+  for (const line of p.split("\n")) {
+    const bullet = /^\s*[-*•]\s+/.exec(line);
+    if (bullet) {
+      if (!items) { flush(); items = []; }
+      items.push([line.slice(bullet[0].length).trim()]);
+    } else if (items && /^\s/.test(line)) {
+      items[items.length - 1].push(line.trim());
+    } else {
+      if (items) flush();
+      text.push(line.trim());
+    }
+  }
+  flush();
+  return out.join("");
 }
 function inline(t) {
   return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>");

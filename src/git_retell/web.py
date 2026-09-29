@@ -35,6 +35,8 @@ from .viewer import safe_text
 
 EMPTY = "0" * 40
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
+# Hyphenated tokens (Co-Authored-By) or well-known words; "Note: ..." stays prose.
+TRAILER = re.compile(r"(?i:[a-z0-9]+(?:-[a-z0-9]+)+|fixes|closes|refs|cc|bug): \S")
 # Coarse token classes keep the payload small and the theme easy to restyle.
 CATEGORIES: list[tuple[_TokenType, str]] = [
     (Comment, "c"),
@@ -80,6 +82,18 @@ def blobs(repo: Path, ids: set[str]) -> dict[str, bytes]:
         found[oid] = output[position : position + size]
         position += size + 1
     return found
+
+
+def without_trailers(body: str) -> str:
+    """Drop a final paragraph of Git trailers such as Co-Authored-By; slides show prose."""
+    paragraphs = body.strip().split("\n\n")
+    last = paragraphs[-1].split("\n")
+    # Folded trailer values continue on indented lines.
+    if TRAILER.match(last[0]) and all(
+        TRAILER.match(line) or line[:1].isspace() for line in last
+    ):
+        paragraphs.pop()
+    return "\n\n".join(paragraphs).strip()
 
 
 def split_lines(text: str) -> list[str]:
@@ -283,7 +297,7 @@ def payload(retelling: Retelling, context: int | None = None) -> dict:
             {
                 "commit": commit,
                 "subject": subject,
-                "body": body.strip(),
+                "body": without_trailers(body),
                 "lines": report["steps"][number]["presentation_lines"],
                 "files": builder.step(previous, commit, content, raw),
             }

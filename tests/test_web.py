@@ -90,3 +90,17 @@ def test_web_command_writes_page(repo, tmp_path):
     assert "Wrote" in result.output
     text = output.read_text()
     assert "<title>demo · git-retell</title>" in text and "__DATA__" not in text
+
+
+def test_trailers_are_dropped_but_prose_is_kept():
+    body = (
+        "Explain.\n\nCo-Authored-By: A <a@example.invalid>\nSigned-off-by: B\n  folded"
+    )
+    assert web.without_trailers(body) == "Explain."
+    assert web.without_trailers("Co-Authored-By: A") == ""
+    assert web.without_trailers("Explain.\n\nNote: still temporary.") == (
+        "Explain.\n\nNote: still temporary."
+    )
+    assert web.without_trailers("Explain.\n\nFixes: #3\nsee above") == (
+        "Explain.\n\nFixes: #3\nsee above"
+    )
