@@ -237,17 +237,19 @@ footer.seek {
 }
 .nav { display: flex; gap: 6px; padding-bottom: 6px; }
 .nav .btn { width: 34px; height: 34px; border-radius: 9px; font-size: 15px; }
-.timeline { position: relative; height: 96px; cursor: pointer; touch-action: none; }
-.labels { position: absolute; left: 0; right: 0; top: 0; height: 30px; }
+.timeline { position: relative; height: 102px; cursor: pointer; touch-action: none; }
+.labels { position: absolute; left: 0; right: 0; top: 0; height: 26px; }
 .flag {
-  position: absolute; transform: translateX(-4px); font-size: 10.5px; line-height: 14px;
-  white-space: nowrap; color: var(--new); display: flex; align-items: center; gap: 4px; pointer-events: none;
+  position: absolute; font-size: 10.5px; line-height: 14px; white-space: nowrap; color: var(--new); pointer-events: none;
 }
-.flag::before { content: ""; width: 7px; height: 7px; transform: rotate(45deg); background: var(--new); border-radius: 1px; flex: none; }
 .flag.gone { color: var(--del); }
-.flag.gone::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--del); }
-.flag.dot span { display: none; }
-.track { position: absolute; left: 0; right: 0; top: 32px; height: 44px; }
+.marks { position: absolute; left: 0; right: 0; top: 27px; height: 9px; pointer-events: none; }
+.mark {
+  position: absolute; top: 50%; width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  transform: rotate(45deg); background: var(--new); border-radius: 1px;
+}
+.mark.gone { background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--del); }
+.track { position: absolute; left: 0; right: 0; top: 38px; height: 44px; }
 .track svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .track .axis { stroke: var(--rule); stroke-width: 1; }
 .track .pa { fill: var(--add); } .track .pd { fill: var(--del); }
@@ -255,7 +257,7 @@ footer.seek {
 .track .stem { stroke: var(--new); stroke-width: 1; stroke-dasharray: 2 2; opacity: .55; }
 .track .stem.gone { stroke: var(--del); }
 .playhead {
-  position: absolute; top: 28px; bottom: 18px; width: 2px; margin-left: -1px; background: var(--text);
+  position: absolute; top: 34px; bottom: 18px; width: 2px; margin-left: -1px; background: var(--text);
   border-radius: 2px; transition: left .45s cubic-bezier(.3,.7,.2,1); pointer-events: none;
 }
 .playhead::before {
@@ -263,7 +265,7 @@ footer.seek {
   font-size: 10.5px; font-weight: 700; background: var(--text); color: var(--bg); padding: 0 6px; border-radius: 99px; line-height: 16px;
 }
 .hover {
-  position: absolute; bottom: 100px; transform: translateX(-50%); max-width: 360px;
+  position: absolute; bottom: 106px; transform: translateX(-50%); max-width: 360px;
   background: var(--card); border: 1px solid var(--rule); border-radius: 9px; box-shadow: var(--shadow);
   padding: 8px 11px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .12s;
   z-index: 5;
@@ -323,6 +325,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   </div>
   <div class="timeline" id="timeline">
     <div class="labels" id="labels"></div>
+    <div class="marks" id="marks"></div>
     <div class="track" id="track"></div>
     <div class="playhead" id="playhead"></div>
     <div class="hover" id="hover"></div>
@@ -853,7 +856,7 @@ function buildTimeline() {
     const cx = xOf(i) * 1000, [a, d] = churn[i];
     const introduced = s.files.some((f) => f.status === "A"), removed = s.files.some((f) => f.status === "D");
     svg += `<g data-s="${i}">`;
-    if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="-4" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
+    if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
     svg += `<rect class="pa" x="${cx - bw / 2}" y="${mid - scale(a)}" width="${bw}" height="${scale(a)}" rx="1"/>`;
     svg += `<rect class="pd" x="${cx - bw / 2}" y="${mid}" width="${bw}" height="${scale(d)}" rx="1"/></g>`;
   });
@@ -861,29 +864,45 @@ function buildTimeline() {
   layoutFlags();
 }
 
-// Label steps that introduce or delete files; crowded labels collapse to markers.
+// Every step that adds or deletes files gets a marker in one fixed row, so a
+// crowded history never grows taller; name labels fill two rows where they fit.
 function layoutFlags() {
-  const labels = $("labels");
+  const labels = $("labels"), marks = $("marks");
   labels.replaceChildren();
+  marks.replaceChildren();
   const width = labels.clientWidth || 800;
-  const lanes = [-Infinity, -Infinity];
+  const size = Math.max(3, Math.min(7, width / D.slides.length - 2));
+  marks.style.setProperty("--s", size + "px");
+  const lanes = [[], []];
+  const free = (lane, a, b) => lanes[lane].every(([c, d]) => b <= c || a >= d);
   D.slides.forEach((s, i) => {
     const added = s.files.filter((f) => f.status === "A"), gone = s.files.filter((f) => f.status === "D");
-    for (const [list, cls] of [[added, ""], [gone, "gone"]]) {
+    const x = xOf(i) * width;
+    for (const [list, cls] of [[gone, "gone"], [added, ""]]) {
       if (!list.length) continue;
-      const name = splitPath(list[0].path)[1] + (list.length > 1 ? ` +${list.length - 1}` : "");
+      const mark = document.createElement("div");
+      mark.className = "mark " + cls;
+      mark.style.left = x + "px";
+      marks.appendChild(mark);
       const el = document.createElement("div");
       el.className = "flag " + cls;
-      el.innerHTML = `<span>${esc((cls ? "−" : "") + name)}</span>`;
-      const x = xOf(i) * width;
-      el.style.left = x + "px";
+      el.textContent = (cls ? "−" : "") + splitPath(list[0].path)[1] + (list.length > 1 ? ` +${list.length - 1}` : "");
       labels.appendChild(el);
-      const w = el.offsetWidth + 10;
-      let lane = lanes.findIndex((end) => x - 4 >= end);
-      if (lane < 0 || x + w > width + 8) { el.classList.add("dot"); lane = 1; }
-      else lanes[lane] = x + w;
-      el.style.top = (lane === 0 ? 0 : 15) + "px";
-      if (el.classList.contains("dot")) el.style.top = "15px";
+      const w = el.offsetWidth;
+      // Prefer starting at the marker; near the right edge, end at it instead.
+      const spots = [[x - 3, x - 3 + w], [x + 3 - w, x + 3]].filter(([a, b]) => a >= 0 && b <= width);
+      let placed = false;
+      for (let lane = 0; lane < 2 && !placed; lane++) {
+        for (const [a, b] of spots) {
+          if (!free(lane, a - 6, b + 6)) continue;
+          lanes[lane].push([a, b]);
+          el.style.left = a + "px";
+          el.style.top = lane * 12 + "px";
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) el.remove();
     }
   });
 }
@@ -894,13 +913,19 @@ function stepAt(clientX) {
   return Math.max(0, Math.min(D.slides.length - 1, i));
 }
 
+// Long lists of new files would bury the step, so show a few and count the rest.
+function list(paths, cls, sign) {
+  const shown = paths.length > 5 ? paths.slice(0, 4) : paths;
+  const more = paths.length - shown.length;
+  return shown.map((p) => `<div class="${cls}">${sign} ${esc(p)}</div>`).join("")
+    + (more ? `<div class="${cls}">${sign} ${more} more file${more === 1 ? "" : "s"}</div>` : "");
+}
 function showHover(i) {
   const s = D.slides[i], hv = $("hover");
   const added = s.files.filter((f) => f.status === "A").map((f) => f.path);
   const gone = s.files.filter((f) => f.status === "D").map((f) => f.path);
   hv.innerHTML = `<div class="hs">Step ${i + 1} · ${s.lines} lines</div><div>${inline(s.subject.replace(/^synthetic:\s*/i, ""))}</div>`
-    + added.map((p) => `<div class="hn">+ ${esc(p)}</div>`).join("")
-    + gone.map((p) => `<div class="hg">− ${esc(p)}</div>`).join("");
+    + list(added, "hn", "+") + list(gone, "hg", "−");
   const w = $("timeline").clientWidth;
   const x = xOf(i) * w;
   hv.style.left = Math.max(140, Math.min(w - 140, x)) + "px";

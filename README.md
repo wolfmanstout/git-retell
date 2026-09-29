@@ -158,9 +158,10 @@ viewer can animate the difference between any two slides:
   block openers, not control flow) or from Markdown heading levels, and update
   as you change context.
 
-A seek bar charts each step's additions and deletions. It labels the steps
-that introduce (◆) or delete (◇) files; hover for a step's subject and files,
-and click or drag to jump. Code is syntax highlighted with Pygments.
+A seek bar charts each step's additions and deletions. A fixed row marks every
+step that introduces (◆) or deletes (◇) files, and file names label them where
+space allows; hover for a step's subject and files, and click or drag to jump.
+Code is syntax highlighted with Pygments.
 
 Web viewer controls: right/left arrow, `n`/`p`, or space: next and previous step.
 Home/End: first/last step. `j`/`k`: scroll. `+`/`-`: context, `0`: reset, `f`:
