@@ -7,7 +7,7 @@ import click
 
 from . import checks
 from .git import root
-from .retelling import Retelling, inspect, names, worktrees
+from .retelling import Retelling, inspect, names, save_settings, worktrees
 from .retelling import delete as delete_retelling
 from .retelling import finish as finish_retelling
 from .retelling import resume as resume_retelling
@@ -365,6 +365,36 @@ def check(name: str, timeout: float, command: tuple[str, ...]):
     click.echo(json.dumps(results, indent=2))
     if any(not item["passed"] for item in results):
         raise click.exceptions.Exit(1)
+
+
+@cli.command()
+@click.argument("name")
+@click.option(
+    "--budget", type=click.IntRange(min=1), help="Save a new diff line budget."
+)
+@click.option(
+    "--context", type=click.IntRange(min=0), help="Save new context lines per hunk."
+)
+def configure(name: str, budget: int | None, context: int | None):
+    """Print or change a retelling's saved budget and context.
+
+    Settings are stored as a JSON blob at refs/retell/NAME/settings, so they
+    travel with the retelling's other refs. With no options, prints them.
+
+    \b
+    Examples:
+      git-retell configure demo
+      git-retell configure demo --budget 80 --context 6
+    """
+    repo = root()
+    Retelling.load(repo, name)
+    changes = {"budget": budget, "context": context}
+    saved = save_settings(
+        repo,
+        name,
+        **{key: value for key, value in changes.items() if value is not None},
+    )
+    click.echo(f"{name}: budget {saved['budget']} · context {saved['context']}")
 
 
 @cli.command(name="list")

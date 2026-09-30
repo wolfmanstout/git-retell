@@ -91,7 +91,7 @@ def test_list_and_delete_retellings(repo, tmp_path):
     assert not path.exists()
     assert resolve(repo, "main") == retelling.target
     assert resolve(repo, "refs/heads/retell/demo-other") == other.tip
-    assert "retell.demo." not in git(repo, "config", "--local", "--list")
+    assert git(repo, "for-each-ref", "refs/retell/demo/") == ""
     assert [
         e["name"] for e in json.loads(runner.invoke(cli, ["list", "--json"]).output)
     ] == ["demo-other"]
@@ -231,12 +231,34 @@ def test_context_flags_and_legacy_defaults(repo, tmp_path, monkeypatch):
     assert resolve(repo, "main") == target
     for command in ("show", "view", "validate"):
         assert runner.invoke(cli, [command, "demo", "--context", "-1"]).exit_code == 2
-    git(repo, "config", "--unset", "retell.demo.context")
+    blob = git(
+        repo, "hash-object", "-w", "--stdin", input_text='{"budget": 8}\n'
+    ).strip()
+    git(repo, "update-ref", "refs/retell/demo/settings", blob)
     assert Retelling.load(repo, "demo").context == 3
     assert (
         json.loads(runner.invoke(cli, ["validate", "demo", "--json"]).output)["context"]
         == 3
     )
+
+
+def test_configure_updates_settings_blob(repo, tmp_path):
+    example(repo, tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["configure", "demo"])
+    assert result.exit_code == 0 and "budget 60 · context 3" in result.output
+    result = runner.invoke(cli, ["configure", "demo", "--context", "6"])
+    assert result.exit_code == 0 and "budget 60 · context 6" in result.output
+    stored = git(repo, "cat-file", "blob", "refs/retell/demo/settings")
+    assert json.loads(stored) == {"budget": 60, "context": 6}
+    assert "retell." not in git(repo, "config", "--local", "--list")
+    assert runner.invoke(cli, ["configure", "demo", "--budget", "0"]).exit_code == 2
+    assert runner.invoke(cli, ["configure", "missing"]).exit_code == 1
+    for text in ("[]", "not json", '{"budget": "60"}', '{"context": -1}'):
+        blob = git(repo, "hash-object", "-w", "--stdin", input_text=text).strip()
+        git(repo, "update-ref", "refs/retell/demo/settings", blob)
+        result = runner.invoke(cli, ["validate", "demo"])
+        assert result.exit_code == 1 and "refs/retell/demo/settings" in result.output
 
 
 def test_help_has_examples_for_every_command():

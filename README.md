@@ -188,9 +188,9 @@ git-retell view demo --context 12
 `validate`, `show`, and `view` use saved context unless you pass `--context`.
 Overrides apply only to that invocation. The validation report includes the
 context used for every presentation-size metric. Checks run code and do not need
-a diff context setting. Existing retellings without saved context use 3 lines.
-To update saved defaults later, use `git config retell.demo.context 6` or
-`git config retell.demo.budget 80`.
+a diff context setting. Retellings without a saved setting use its default.
+To print or update saved defaults later, use `git-retell configure demo` or
+`git-retell configure demo --budget 80 --context 6`.
 
 ## Finishing, resuming, listing, and deleting retellings
 
@@ -213,7 +213,7 @@ then `finish` again.
 attached worktrees. It includes unfinished and incomplete entries; use `validate`
 for the full correctness and budget report.
 
-`delete` removes the named synthetic branch, endpoint refs, saved config, and
+`delete` removes the named synthetic branch, endpoint refs, saved settings, and
 authoring worktree, leaving real development branches intact. `finish` and
 `delete` refuse current or locked worktrees and those with uncommitted changes
 or untracked files; a refused `delete` changes nothing. Ignored files, such as
@@ -263,23 +263,21 @@ For retelling `demo`, the only stored state is:
 
 - `refs/heads/retell/demo`: the ordinary synthetic commit chain.
 - `refs/retell/demo/base` and `refs/retell/demo/target`: pinned real commits.
-- Repository config `retell.demo.budget`: the default line budget.
-- Repository config `retell.demo.context`: the default context lines per hunk.
+- `refs/retell/demo/settings`: a JSON blob holding the default line `budget`
+  and `context` lines per hunk.
 
 Branch movement cannot silently move the pinned endpoints. There is no tutorial
-format or sidecar file. Commit messages should identify the synthetic nature
-when read outside this CLI; every CLI slide explicitly labels it.
+format, sidecar file, or Git config entry. Commit messages should identify the
+synthetic nature when read outside this CLI; every CLI slide explicitly labels it.
 To share a history, include its endpoints, since the target may not be an ancestor
 of the synthetic branch. A normal Git bundle works:
 
 ```sh
 git bundle create demo.bundle refs/heads/retell/demo \
-  refs/retell/demo/base refs/retell/demo/target
+  refs/retell/demo/base refs/retell/demo/target refs/retell/demo/settings
 # In another repository:
 git fetch /path/to/demo.bundle 'refs/heads/retell/demo:refs/heads/retell/demo' \
   'refs/retell/demo/*:refs/retell/demo/*'
-git config retell.demo.budget 40
-git config retell.demo.context 3
 ```
 
 `start` refuses an existing retelling or branch. It never resets the main checkout.

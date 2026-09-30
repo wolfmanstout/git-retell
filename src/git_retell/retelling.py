@@ -1,5 +1,6 @@
 """Git refs pin the endpoints; the explanatory artifact is a normal branch."""
 
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -36,15 +37,15 @@ class Retelling:
             raise click.ClickException(
                 f"No retelling named {name!r}. Use git-retell list."
             )
-        budget = setting(repo, name, "budget", 60, 1)
+        saved = settings(repo, name)
         return cls(
             repo,
             name,
             resolve(repo, f"{prefix}/base"),
             resolve(repo, f"{prefix}/target"),
             resolve(repo, f"refs/heads/retell/{name}"),
-            budget,
-            setting(repo, name, "context", 3, 0),
+            saved["budget"],
+            saved["context"],
         )
 
     def commits(self) -> list[str]:
@@ -77,8 +78,7 @@ def start(
     git(repo, "worktree", "add", "-b", f"retell/{name}", str(path), before)
     git(repo, "update-ref", f"{prefix}/base", before)
     git(repo, "update-ref", f"{prefix}/target", after)
-    git(repo, "config", f"retell.{name}.budget", str(budget))
-    git(repo, "config", f"retell.{name}.context", str(context))
+    save_settings(repo, name, budget=budget, context=context)
     return Retelling.load(repo, name)
 
 
@@ -270,7 +270,7 @@ def resume(repo: Path, name: str, path: Path) -> Retelling:
 
 
 def delete(repo: Path, name: str) -> list[str]:
-    """Delete one retelling's refs/config and remove its authoring worktrees."""
+    """Delete one retelling's refs and remove its authoring worktrees."""
     validate_name(name)
     if name not in names(repo):
         raise click.ClickException(f"No retelling named {name!r}. Use git-retell list.")
@@ -287,6 +287,7 @@ def delete(repo: Path, name: str) -> list[str]:
     expected = {
         f"refs/retell/{name}/base",
         f"refs/retell/{name}/target",
+        f"refs/retell/{name}/settings",
         f"refs/heads/retell/{name}",
     }
     commands = [
@@ -301,24 +302,46 @@ def delete(repo: Path, name: str) -> list[str]:
         "--stdin",
         input_text="start\n" + "\n".join(commands) + "\nprepare\ncommit\n",
     )
-    if any(
-        line.startswith(f"retell.{name}.")
-        for line in git(repo, "config", "--local", "--list").splitlines()
-    ):
-        git(repo, "config", "--local", "--remove-section", f"retell.{name}")
     return [tree["worktree"] for tree in attached]
 
 
-def setting(repo: Path, name: str, key: str, default: int, minimum: int) -> int:
-    value = git(
-        repo, "config", "--default", str(default), "--get", f"retell.{name}.{key}"
+# Each saved setting's default and smallest allowed value.
+DEFAULTS = {"budget": (60, 1), "context": (3, 0)}
+
+
+def settings(repo: Path, name: str) -> dict:
+    """Read the JSON settings blob; a missing blob or key uses its default."""
+    ref = f"refs/retell/{name}/settings"
+    saved = {}
+    if git(repo, "for-each-ref", "--format=%(refname)", ref).strip():
+        try:
+            saved = json.loads(git(repo, "cat-file", "blob", ref))
+        except ValueError:
+            saved = None
+        if not isinstance(saved, dict):
+            raise click.ClickException(f"Invalid {ref}: expected a JSON object.")
+    result = {}
+    for key, (default, minimum) in DEFAULTS.items():
+        value = saved.get(key, default)
+        if type(value) is not int or value < minimum:
+            raise click.ClickException(
+                f"Invalid {key} in {ref}: expected an integer >= {minimum}, got {value!r}."
+            )
+        result[key] = value
+    return result
+
+
+def save_settings(repo: Path, name: str, **changes: int) -> dict:
+    """Store the current settings updated with CHANGES as a new JSON blob."""
+    saved = {**settings(repo, name), **changes}
+    blob = git(
+        repo,
+        "hash-object",
+        "-t",
+        "blob",
+        "-w",
+        "--stdin",
+        input_text=json.dumps(saved, indent=2, sort_keys=True) + "\n",
     ).strip()
-    try:
-        number = int(value)
-        if number >= minimum:
-            return number
-    except ValueError:
-        pass
-    raise click.ClickException(
-        f"Invalid retell.{name}.{key}: expected an integer >= {minimum}, got {value!r}."
-    )
+    git(repo, "update-ref", f"refs/retell/{name}/settings", blob)
+    return saved

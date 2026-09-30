@@ -3,8 +3,8 @@ import os
 import pytest
 
 from git_retell import viewer
-from git_retell.git import git, line_count
-from git_retell.retelling import Retelling, inspect
+from git_retell.git import line_count
+from git_retell.retelling import Retelling, inspect, save_settings
 
 from .helpers import commit, example, refresh
 
@@ -165,7 +165,7 @@ def test_viewer_uses_initial_context_and_revalidates(
     retelling, path = example(repo, tmp_path, target, budget=8)
     (path / "code.txt").write_text(target)
     commit(path, "Explain")
-    git(repo, "config", "retell.demo.context", "0")
+    save_settings(repo, "demo", context=0)
     monkeypatch.setattr(viewer.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(viewer.sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr(
