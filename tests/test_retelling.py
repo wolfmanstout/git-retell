@@ -100,7 +100,7 @@ def test_delete_protects_worktrees(repo, tmp_path, monkeypatch, state):
     elif state == "current":
         monkeypatch.chdir(path)
     with pytest.raises(click.ClickException):
-        delete(repo, "demo", remove_worktree=True)
+        delete(repo, "demo")
     assert path.exists()
     assert refresh(retelling) == retelling
 
@@ -112,7 +112,7 @@ def test_delete_removes_ignored_files(repo, tmp_path):
     (tmp_path / "ignore").write_text("build/\n")
     (path / "build").mkdir()
     (path / "build" / "out").write_text("regenerable\n")
-    delete(repo, "demo", remove_worktree=True)
+    delete(repo, "demo")
     assert not path.exists()
 
 
@@ -122,5 +122,5 @@ def test_worktree_paths_with_newlines(repo, tmp_path):
     path = tmp_path / "author space\nand newline"
     start(repo, "odd", base, base, path, 60)
     assert worktrees(repo, "odd")[0]["worktree"] == str(path)
-    delete(repo, "odd", remove_worktree=True)
+    delete(repo, "odd")
     assert not path.exists()

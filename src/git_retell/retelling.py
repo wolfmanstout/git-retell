@@ -269,18 +269,13 @@ def resume(repo: Path, name: str, path: Path) -> Retelling:
     return retelling
 
 
-def delete(repo: Path, name: str, remove_worktree: bool = False) -> list[str]:
-    """Delete one retelling's refs/config; remove worktrees only when explicitly requested."""
+def delete(repo: Path, name: str) -> list[str]:
+    """Delete one retelling's refs/config and remove its authoring worktrees."""
     validate_name(name)
     if name not in names(repo):
         raise click.ClickException(f"No retelling named {name!r}. Use git-retell list.")
     attached = worktrees(repo, name)
     for tree in attached:
-        if not remove_worktree:
-            raise click.ClickException(
-                f"Retelling is checked out at {tree['worktree']}. Detach/remove that "
-                "worktree first, or use --remove-worktree to remove a clean worktree."
-            )
         check_removable(repo, tree)
     refs = git(
         repo,

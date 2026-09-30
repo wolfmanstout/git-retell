@@ -425,25 +425,19 @@ def list_retellings(as_json: bool):
 
 @cli.command()
 @click.argument("name")
-@click.option(
-    "--remove-worktree",
-    is_flag=True,
-    help="Also remove the attached authoring worktree, only if clean and unlocked.",
-)
-def delete(name: str, remove_worktree: bool):
-    """Delete a retelling's synthetic branch, endpoint refs, and saved settings.
+def delete(name: str):
+    """Delete a retelling's synthetic branch, refs, settings, and worktree.
 
     Real development branches are untouched. This removes the retelling's
     references, not a backup: export a Git bundle first if you want to keep it.
-    By default, checked-out retellings are refused; detach or remove their
-    worktrees yourself, or use --remove-worktree from another checkout.
-    Dirty, locked, and current worktrees are never removed; untracked files
-    also block removal, but ignored files are removed. There is no force option.
+    The authoring worktree is removed too. Nothing is deleted if that worktree
+    is current, locked, or has uncommitted changes or untracked files; ignored
+    files are removed with it. Worktrees switched away from retell/NAME are
+    left alone. There is no force option.
 
     \b
     Examples:
       git-retell delete old-demo
-      git-retell delete demo --remove-worktree
     """
-    report_removed(delete_retelling(root(), name, remove_worktree))
+    report_removed(delete_retelling(root(), name))
     click.echo(f"Deleted retelling {name!r}.")

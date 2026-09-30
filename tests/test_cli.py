@@ -81,10 +81,12 @@ def test_list_and_delete_retellings(repo, tmp_path):
     assert entries[0]["worktrees"] == [str(path)]
     assert entries[1]["context"] == 6 and entries[1]["budget"] == 80
     before = git(repo, "show-ref")
+    (path / "notes").write_text("unsaved\n")
     result = runner.invoke(cli, ["delete", "demo"])
-    assert result.exit_code == 1 and "--remove-worktree" in result.output
+    assert result.exit_code == 1 and "untracked" in result.output
     assert git(repo, "show-ref") == before and path.exists()
-    result = runner.invoke(cli, ["delete", "demo", "--remove-worktree"])
+    (path / "notes").unlink()
+    result = runner.invoke(cli, ["delete", "demo"])
     assert result.exit_code == 0, result.output
     assert not path.exists()
     assert resolve(repo, "main") == retelling.target

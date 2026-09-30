@@ -200,7 +200,6 @@ git-retell resume demo --worktree /tmp/demo
 git-retell list
 git-retell list --json
 git-retell delete demo
-git-retell delete demo --remove-worktree
 ```
 
 The authoring worktree is only needed while writing steps; every other command
@@ -214,16 +213,15 @@ then `finish` again.
 attached worktrees. It includes unfinished and incomplete entries; use `validate`
 for the full correctness and budget report.
 
-`delete` removes the named synthetic branch, endpoint refs, and saved config,
-leaving real development branches intact. By default it refuses a checked-out
-retelling. Detach/remove its worktree yourself, or use `--remove-worktree` from
-another checkout to remove a clean, unlocked worktree too. `finish` and `delete`
-refuse current or locked worktrees and those with uncommitted changes or
-untracked files. Ignored files, such as build output, are removed with the
-worktree. If a worktree directory was already deleted (for example by the
-system's `/tmp` cleanup), `finish`, `resume`, and `delete` clear only that
-retelling's stale Git entry; other stale worktrees are left alone. Export a Git bundle first if you want to keep the retelling; deletion
-is not archival.
+`delete` removes the named synthetic branch, endpoint refs, saved config, and
+authoring worktree, leaving real development branches intact. `finish` and
+`delete` refuse current or locked worktrees and those with uncommitted changes
+or untracked files; a refused `delete` changes nothing. Ignored files, such as
+build output, are removed with the worktree. If a worktree directory was already
+deleted (for example by the system's `/tmp` cleanup), `finish`, `resume`, and
+`delete` clear only that retelling's stale Git entry; other stale worktrees are
+left alone. Export a Git bundle first if you want to keep the retelling;
+deletion is not archival.
 
 ## Suggested agent prompt
 
