@@ -1,4 +1,5 @@
 import json
+import shutil
 
 from click.testing import CliRunner
 
@@ -135,6 +136,31 @@ def test_finish_and_resume(repo, tmp_path):
     )
     assert runner.invoke(cli, ["finish", "demo"]).exit_code == 0
     assert not again.exists()
+
+
+def test_finish_and_resume_clear_only_their_stale_worktrees(repo, tmp_path):
+
+    retelling, path = example(repo, tmp_path)
+    (path / "code.txt").write_text("after\n")
+    git(path, "commit", "-am", "Explain the change")
+    unrelated = tmp_path / "unrelated"
+    git(repo, "worktree", "add", "--detach", str(unrelated))
+    shutil.rmtree(unrelated)
+    (path / ".git").unlink()
+    runner = CliRunner()
+    result = runner.invoke(cli, ["finish", "demo"])
+    assert result.exit_code == 0, result.output
+    assert f"Left non-Git leftovers on disk: {path}" in result.output
+    listed = git(repo, "worktree", "list", "--porcelain")
+    assert str(path) not in listed and str(unrelated) in listed
+
+    again = tmp_path / "again"
+    git(repo, "worktree", "add", str(again), "retell/demo")
+    shutil.rmtree(again)
+    result = runner.invoke(cli, ["resume", "demo", "--worktree", str(again)])
+    assert result.exit_code == 0, result.output
+    assert resolve(again, "HEAD") == refresh(retelling).tip
+    assert str(unrelated) in git(repo, "worktree", "list", "--porcelain")
 
 
 def test_delete_keeps_detached_worktree_and_handles_incomplete_refs(repo, tmp_path):

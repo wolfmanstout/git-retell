@@ -199,6 +199,13 @@ def validate(name: str, budget: int | None, as_json: bool, context: int | None):
         raise click.exceptions.Exit(1)
 
 
+def report_removed(paths: list[str]) -> None:
+    for path in paths:
+        click.echo(f"Removed worktree: {path}")
+        if Path(path).exists():
+            click.echo(f"  Left non-Git leftovers on disk: {path}")
+
+
 @cli.command()
 @click.argument("name")
 def finish(name: str):
@@ -208,7 +215,8 @@ def finish(name: str):
     printed, the worktree is kept, and the exit code is 1. The synthetic branch
     is always kept; use resume to revise it later. Current, locked, and dirty
     worktrees (uncommitted or untracked files) are refused; ignored files such
-    as build output are removed with the worktree.
+    as build output are removed with the worktree. If the worktree directory
+    was already deleted, only this retelling's stale Git entry is cleared.
 
     \b
     Examples:
@@ -218,8 +226,7 @@ def finish(name: str):
     report_output(report, False)
     if not report["valid"]:
         raise click.exceptions.Exit(1)
-    for path in removed:
-        click.echo(f"Removed worktree: {path}")
+    report_removed(removed)
     click.echo(f"View: git-retell view {name}  ·  git-retell web {name}")
 
 
@@ -438,5 +445,5 @@ def delete(name: str, remove_worktree: bool):
       git-retell delete old-demo
       git-retell delete demo --remove-worktree
     """
-    delete_retelling(root(), name, remove_worktree)
+    report_removed(delete_retelling(root(), name, remove_worktree))
     click.echo(f"Deleted retelling {name!r}.")

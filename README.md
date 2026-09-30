@@ -220,7 +220,9 @@ retelling. Detach/remove its worktree yourself, or use `--remove-worktree` from
 another checkout to remove a clean, unlocked worktree too. `finish` and `delete`
 refuse current or locked worktrees and those with uncommitted changes or
 untracked files. Ignored files, such as build output, are removed with the
-worktree. Export a Git bundle first if you want to keep the retelling; deletion
+worktree. If a worktree directory was already deleted (for example by the
+system's `/tmp` cleanup), `finish`, `resume`, and `delete` clear only that
+retelling's stale Git entry; other stale worktrees are left alone. Export a Git bundle first if you want to keep the retelling; deletion
 is not archival.
 
 ## Suggested agent prompt

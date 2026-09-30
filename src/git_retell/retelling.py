@@ -1,6 +1,7 @@
 """Git refs pin the endpoints; the explanatory artifact is a normal branch."""
 
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -200,8 +201,13 @@ def check_removable(repo: Path, tree: dict) -> None:
 
     Ignored files are disposable build output in an authoring worktree, so they
     do not block removal; uncommitted and untracked files might be unsaved work.
+    A prunable worktree has no checkout left to inspect.
     """
     path = Path(tree["worktree"])
+    if "locked" in tree:
+        raise click.ClickException(f"Worktree {path} is locked; unlock it first.")
+    if "prunable" in tree:
+        return
     if path.resolve() == repo.resolve() or path.resolve() in (
         Path.cwd().resolve(),
         *Path.cwd().resolve().parents,
@@ -209,19 +215,31 @@ def check_removable(repo: Path, tree: dict) -> None:
         raise click.ClickException(
             f"Cannot remove the current worktree {path}. Run from another checkout."
         )
-    if (
-        "locked" in tree
-        or git(path, "status", "--porcelain", "--untracked-files=all").strip()
-    ):
+    if git(path, "status", "--porcelain", "--untracked-files=all").strip():
         raise click.ClickException(
-            f"Worktree {path} is locked or contains changes/untracked files; "
+            f"Worktree {path} contains changes/untracked files; "
             "commit, discard, or preserve them first."
         )
 
 
 def remove_worktrees(repo: Path, attached: list[dict]) -> None:
+    """Remove live worktrees; unregister only these entries if already deleted.
+
+    git worktree prune would also drop unrelated stale entries (for example on
+    an unmounted drive), so a missing checkout's admin directory is removed
+    directly. Any leftover non-Git directory is left on disk.
+    """
     for tree in attached:
-        git(repo, "worktree", "remove", tree["worktree"])
+        if "prunable" not in tree:
+            git(repo, "worktree", "remove", tree["worktree"])
+            continue
+        common = repo / git(repo, "rev-parse", "--git-common-dir").strip()
+        for admin in (common / "worktrees").iterdir():
+            gitdir = admin / "gitdir"
+            if gitdir.is_file() and Path(gitdir.read_text().strip()).parent == Path(
+                tree["worktree"]
+            ):
+                shutil.rmtree(admin)
 
 
 def finish(repo: Path, name: str) -> tuple[dict, list[str]]:
@@ -239,15 +257,19 @@ def finish(repo: Path, name: str) -> tuple[dict, list[str]]:
 def resume(repo: Path, name: str, path: Path) -> Retelling:
     """Check out an existing retelling's branch in a new authoring worktree."""
     retelling = Retelling.load(repo, name)
-    if attached := worktrees(repo, name):
+    attached = worktrees(repo, name)
+    if live := [t for t in attached if "prunable" not in t]:
         raise click.ClickException(
-            f"Retelling is already checked out at {attached[0]['worktree']}."
+            f"Retelling is already checked out at {live[0]['worktree']}."
         )
+    for tree in attached:
+        check_removable(repo, tree)
+    remove_worktrees(repo, attached)
     git(repo, "worktree", "add", str(path), f"retell/{name}")
     return retelling
 
 
-def delete(repo: Path, name: str, remove_worktree: bool = False) -> None:
+def delete(repo: Path, name: str, remove_worktree: bool = False) -> list[str]:
     """Delete one retelling's refs/config; remove worktrees only when explicitly requested."""
     validate_name(name)
     if name not in names(repo):
@@ -289,6 +311,7 @@ def delete(repo: Path, name: str, remove_worktree: bool = False) -> None:
         for line in git(repo, "config", "--local", "--list").splitlines()
     ):
         git(repo, "config", "--local", "--remove-section", f"retell.{name}")
+    return [tree["worktree"] for tree in attached]
 
 
 def setting(repo: Path, name: str, key: str, default: int, minimum: int) -> int:
