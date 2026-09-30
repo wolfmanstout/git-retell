@@ -217,25 +217,19 @@ point that favors progressive refinement; change the style, budget, checks, and
 scope to suit your review. Replace the angle-bracket placeholders before use.
 
 ```text
-Use git-retell to explain the change from <BASE> to <TARGET> as a new retelling
-named <NAME>, authored in <WORKTREE>. Use a budget of <LINES> and <CONTEXT> lines
-of diff context. Read git-retell --help and the relevant command help first.
+Use git-retell to explain <BASE> → <TARGET> as <NAME> in <WORKTREE>, with a
+<LINES>-line budget and <CONTEXT> context lines. Read git-retell --help first.
 
-Favor progressive refinement. Establish the end-to-end behavior early, then
-fill in details. If the final implementation is too large for an opening step,
-introduce a small working version or clearly labeled stubs, and refine them.
-Group related changes into substantial, comprehensible steps rather than one
-slide per helper. Explain each step's purpose and any temporary limitations in
-its commit message. This is a preference, not a rule: choose another sequence
-when it makes the change easier to follow.
+Favor progressive refinement: show the end-to-end behavior early, then add
+detail. Introduce variables, functions, and classes alongside their first
+use, rather than as advance preparation. Use simple implementations or explicit
+stubs when needed to fit usage and definition together, then refine them.
 
-Use ordinary Git commits. Start at the exact real base and finish at the exact
-real target tree, removing all temporary teaching code. Keep the history linear
-and label the commits as synthetic explanations. Validate every step's complete
-diff at the chosen context and budget. Report expansion and optional project
-checks as quality signals; intermediate commits do not all need to pass tests.
-Preserve existing retellings. Finish by giving me the view command and a concise
-summary of validation, metrics, and any limitations.
+Make each step substantial and coherent, with a commit message explaining its
+purpose and temporary limitations. Treat these as preferences, not rigid rules.
+
+Preserve existing retellings. Finish at the exact target tree, validate, and
+report the view command, expansion, and any check results or limitations.
 ```
 
 ## Checks
