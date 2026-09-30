@@ -9,6 +9,8 @@ from . import checks
 from .git import root
 from .retelling import Retelling, inspect, names, worktrees
 from .retelling import delete as delete_retelling
+from .retelling import finish as finish_retelling
+from .retelling import resume as resume_retelling
 from .retelling import start as start_retelling
 from .viewer import slide
 from .viewer import view as view_retelling
@@ -28,15 +30,18 @@ def cli():
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
-    budget. Show prints steps; view browses them interactively; web opens an
-    animated browser slideshow; check optionally runs project commands. This
-    tool does not generate explanations or call an LLM.
+    budget. Finish validates and removes the authoring worktree; resume checks
+    the retelling out again for revision. Show prints steps; view browses them
+    interactively; web opens an animated browser slideshow; check optionally
+    runs project commands. This tool does not generate explanations or call an
+    LLM.
 
     \b
     Example workflow (B and H are existing commits):
       git-retell start demo --base B --target H --worktree /tmp/demo
       # Edit files in /tmp/demo, then git add and git commit with explanations.
       git-retell validate demo --json
+      git-retell finish demo
       git-retell view demo --context 6
       git-retell web demo
       git-retell list
@@ -100,7 +105,33 @@ def start(name: str, base: str, target: str, worktree: Path, budget: int, contex
     click.echo(
         f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
         f"Base: {retelling.base}\nTarget: {retelling.target}\nBudget: {budget} diff lines · context {context}\n"
-        f"Next: create explanatory commits, then git-retell validate {name}"
+        f"Next: create explanatory commits, then git-retell finish {name}"
+    )
+
+
+@cli.command()
+@click.argument("name")
+@click.option(
+    "--worktree",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="New authoring directory.",
+)
+def resume(name: str, worktree: Path):
+    """Check out branch retell/NAME in a new worktree to revise a retelling.
+
+    Use after finish (or after removing the worktree) to amend, rebase, or add
+    steps. Refused if the retelling is already checked out elsewhere.
+
+    \b
+    Examples:
+      git-retell resume demo --worktree /tmp/demo
+    """
+    retelling = resume_retelling(root(), name, worktree.resolve())
+    click.echo(
+        f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
+        f"Steps: {len(retelling.commits())}\n"
+        f"Next: revise with ordinary Git, then git-retell finish {name}"
     )
 
 
@@ -166,6 +197,30 @@ def validate(name: str, budget: int | None, as_json: bool, context: int | None):
     report_output(report, as_json)
     if not report["valid"]:
         raise click.exceptions.Exit(1)
+
+
+@cli.command()
+@click.argument("name")
+def finish(name: str):
+    """Validate a retelling, then remove its authoring worktree.
+
+    Uses the saved budget and context. If validation fails, the report is
+    printed, the worktree is kept, and the exit code is 1. The synthetic branch
+    is always kept; use resume to revise it later. Current, locked, and dirty
+    worktrees (uncommitted or untracked files) are refused; ignored files such
+    as build output are removed with the worktree.
+
+    \b
+    Examples:
+      git-retell finish demo
+    """
+    report, removed = finish_retelling(root(), name)
+    report_output(report, False)
+    if not report["valid"]:
+        raise click.exceptions.Exit(1)
+    for path in removed:
+        click.echo(f"Removed worktree: {path}")
+    click.echo(f"View: git-retell view {name}  ·  git-retell web {name}")
 
 
 @cli.command()
@@ -375,8 +430,8 @@ def delete(name: str, remove_worktree: bool):
     references, not a backup: export a Git bundle first if you want to keep it.
     By default, checked-out retellings are refused; detach or remove their
     worktrees yourself, or use --remove-worktree from another checkout.
-    Dirty, locked, and current worktrees are never removed. Untracked and
-    ignored files also block automatic removal. There is no force option.
+    Dirty, locked, and current worktrees are never removed; untracked files
+    also block removal, but ignored files are removed. There is no force option.
 
     \b
     Examples:

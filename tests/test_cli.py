@@ -95,6 +95,48 @@ def test_list_and_delete_retellings(repo, tmp_path):
     assert runner.invoke(cli, ["delete", "demo"]).exit_code == 1
 
 
+def test_finish_and_resume(repo, tmp_path):
+
+    retelling, path = example(repo, tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["finish", "demo"])
+    assert result.exit_code == 1 and "INVALID" in result.output
+    assert path.exists()
+    (path / "code.txt").write_text("after\n")
+    (path / "notes").write_text("unsaved\n")
+    git(path, "add", "code.txt")
+    git(path, "commit", "-m", "Explain the change")
+    result = runner.invoke(cli, ["finish", "demo"])
+    assert result.exit_code == 1 and "untracked" in result.output
+    assert path.exists()
+    (path / "notes").unlink()
+    result = runner.invoke(cli, ["finish", "demo"])
+    assert result.exit_code == 0, result.output
+    assert "VALID" in result.output and f"Removed worktree: {path}" in result.output
+    assert not path.exists()
+    tip = refresh(retelling).tip
+    assert (
+        json.loads(runner.invoke(cli, ["list", "--json"]).output)[0]["worktrees"] == []
+    )
+
+    again = tmp_path / "again"
+    result = runner.invoke(cli, ["resume", "demo", "--worktree", str(again)])
+    assert result.exit_code == 0, result.output
+    assert "Steps: 1" in result.output
+    assert resolve(again, "HEAD") == tip
+    assert git(again, "branch", "--show-current").strip() == "retell/demo"
+    result = runner.invoke(cli, ["resume", "demo", "--worktree", str(tmp_path / "x")])
+    assert result.exit_code == 1 and "already checked out" in result.output
+    assert (
+        runner.invoke(
+            cli, ["resume", "nope", "--worktree", str(tmp_path / "y")]
+        ).exit_code
+        == 1
+    )
+    assert runner.invoke(cli, ["finish", "demo"]).exit_code == 0
+    assert not again.exists()
+
+
 def test_delete_keeps_detached_worktree_and_handles_incomplete_refs(repo, tmp_path):
 
     retelling, path = example(repo, tmp_path)

@@ -68,10 +68,12 @@ git-retell start demo --base HEAD~1 --target HEAD \
 
 # Review the retelling using the installed CLI:
 git-retell validate demo --json
+git-retell finish demo   # validate, then remove /tmp/retell-demo
 git-retell show demo --step 1
 git-retell view demo
 git-retell web demo
 git-retell check demo --timeout 60 -- pytest
+git-retell resume demo --worktree /tmp/retell-demo   # revise it later
 git-retell list
 ```
 
@@ -190,14 +192,23 @@ a diff context setting. Existing retellings without saved context use 3 lines.
 To update saved defaults later, use `git config retell.demo.context 6` or
 `git config retell.demo.budget 80`.
 
-## Listing and deleting retellings
+## Finishing, resuming, listing, and deleting retellings
 
 ```sh
+git-retell finish demo
+git-retell resume demo --worktree /tmp/demo
 git-retell list
 git-retell list --json
 git-retell delete demo
 git-retell delete demo --remove-worktree
 ```
+
+The authoring worktree is only needed while writing steps; every other command
+reads the retelling's refs. `finish` validates with the saved settings and, only
+if the retelling is valid, removes its authoring worktree while keeping the
+synthetic branch. An invalid retelling keeps its worktree and exits 1. `resume`
+checks the branch out in a new worktree so you can amend, rebase, or add steps,
+then `finish` again.
 
 `list` shows names, pinned endpoints, tips, step counts, saved settings, and
 attached worktrees. It includes unfinished and incomplete entries; use `validate`
@@ -206,9 +217,11 @@ for the full correctness and budget report.
 `delete` removes the named synthetic branch, endpoint refs, and saved config,
 leaving real development branches intact. By default it refuses a checked-out
 retelling. Detach/remove its worktree yourself, or use `--remove-worktree` from
-another checkout to remove a clean, unlocked worktree too. Dirty, current, or
-locked worktrees are protected, including untracked and ignored files. Export a
-Git bundle first if you want to keep the retelling; deletion is not archival.
+another checkout to remove a clean, unlocked worktree too. `finish` and `delete`
+refuse current or locked worktrees and those with uncommitted changes or
+untracked files. Ignored files, such as build output, are removed with the
+worktree. Export a Git bundle first if you want to keep the retelling; deletion
+is not archival.
 
 ## Suggested agent prompt
 
@@ -228,8 +241,9 @@ stubs when needed to fit usage and definition together, then refine them.
 Make each step substantial and coherent, with a commit message explaining its
 purpose and temporary limitations. Treat these as preferences, not rigid rules.
 
-Preserve existing retellings. Finish at the exact target tree, validate, and
-report the view command, expansion, and any check results or limitations.
+Preserve existing retellings. Reach the exact target tree, run git-retell
+finish, and report the view command, expansion, and any check results or
+limitations.
 ```
 
 ## Checks
@@ -269,9 +283,11 @@ git config retell.demo.context 3
 ```
 
 `start` refuses an existing retelling or branch. It never resets the main checkout.
-To remove just an authoring worktree, use `git worktree remove PATH`; its retelling
-stays available. Use `git-retell delete NAME` to remove the retelling's refs and
-settings too. Retellings are not merged back into the real development branch.
+To remove just an authoring worktree, use `git-retell finish NAME` (or `git
+worktree remove PATH` for an unfinished retelling); the retelling stays
+available and `resume` checks it out again. Use `git-retell delete NAME` to
+remove the retelling's refs and settings too. Retellings are not merged back
+into the real development branch.
 
 ## Recursive dogfood
 

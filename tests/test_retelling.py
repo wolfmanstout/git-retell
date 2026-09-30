@@ -87,19 +87,13 @@ def test_pinned_target_survives_branch_motion(repo, tmp_path):
     assert refresh(retelling).target == retelling.target
 
 
-@pytest.mark.parametrize(
-    "state", ["tracked", "untracked", "ignored", "locked", "current"]
-)
+@pytest.mark.parametrize("state", ["tracked", "untracked", "locked", "current"])
 def test_delete_protects_worktrees(repo, tmp_path, monkeypatch, state):
 
     retelling, path = example(repo, tmp_path)
     if state == "tracked":
         (path / "code.txt").write_text("unsaved\n")
     elif state == "untracked":
-        (path / "notes").write_text("keep me\n")
-    elif state == "ignored":
-        git(repo, "config", "core.excludesFile", str(tmp_path / "ignore"))
-        (tmp_path / "ignore").write_text("notes\n")
         (path / "notes").write_text("keep me\n")
     elif state == "locked":
         git(repo, "worktree", "lock", str(path))
@@ -109,6 +103,17 @@ def test_delete_protects_worktrees(repo, tmp_path, monkeypatch, state):
         delete(repo, "demo", remove_worktree=True)
     assert path.exists()
     assert refresh(retelling) == retelling
+
+
+def test_delete_removes_ignored_files(repo, tmp_path):
+
+    _, path = example(repo, tmp_path)
+    git(repo, "config", "core.excludesFile", str(tmp_path / "ignore"))
+    (tmp_path / "ignore").write_text("build/\n")
+    (path / "build").mkdir()
+    (path / "build" / "out").write_text("regenerable\n")
+    delete(repo, "demo", remove_worktree=True)
+    assert not path.exists()
 
 
 def test_worktree_paths_with_newlines(repo, tmp_path):

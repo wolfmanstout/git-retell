@@ -195,6 +195,58 @@ def worktrees(repo: Path, name: str) -> list[dict]:
     return attached
 
 
+def check_removable(repo: Path, tree: dict) -> None:
+    """Refuse to remove a current, locked, or dirty authoring worktree.
+
+    Ignored files are disposable build output in an authoring worktree, so they
+    do not block removal; uncommitted and untracked files might be unsaved work.
+    """
+    path = Path(tree["worktree"])
+    if path.resolve() == repo.resolve() or path.resolve() in (
+        Path.cwd().resolve(),
+        *Path.cwd().resolve().parents,
+    ):
+        raise click.ClickException(
+            f"Cannot remove the current worktree {path}. Run from another checkout."
+        )
+    if (
+        "locked" in tree
+        or git(path, "status", "--porcelain", "--untracked-files=all").strip()
+    ):
+        raise click.ClickException(
+            f"Worktree {path} is locked or contains changes/untracked files; "
+            "commit, discard, or preserve them first."
+        )
+
+
+def remove_worktrees(repo: Path, attached: list[dict]) -> None:
+    for tree in attached:
+        git(repo, "worktree", "remove", tree["worktree"])
+
+
+def finish(repo: Path, name: str) -> tuple[dict, list[str]]:
+    """Validate, then remove authoring worktrees only if the retelling is valid."""
+    report = inspect(Retelling.load(repo, name))
+    if not report["valid"]:
+        return report, []
+    attached = worktrees(repo, name)
+    for tree in attached:
+        check_removable(repo, tree)
+    remove_worktrees(repo, attached)
+    return report, [tree["worktree"] for tree in attached]
+
+
+def resume(repo: Path, name: str, path: Path) -> Retelling:
+    """Check out an existing retelling's branch in a new authoring worktree."""
+    retelling = Retelling.load(repo, name)
+    if attached := worktrees(repo, name):
+        raise click.ClickException(
+            f"Retelling is already checked out at {attached[0]['worktree']}."
+        )
+    git(repo, "worktree", "add", str(path), f"retell/{name}")
+    return retelling
+
+
 def delete(repo: Path, name: str, remove_worktree: bool = False) -> None:
     """Delete one retelling's refs/config; remove worktrees only when explicitly requested."""
     validate_name(name)
@@ -202,28 +254,12 @@ def delete(repo: Path, name: str, remove_worktree: bool = False) -> None:
         raise click.ClickException(f"No retelling named {name!r}. Use git-retell list.")
     attached = worktrees(repo, name)
     for tree in attached:
-        path = Path(tree["worktree"])
         if not remove_worktree:
             raise click.ClickException(
-                f"Retelling is checked out at {path}. Detach/remove that worktree first, "
-                "or use --remove-worktree to remove a clean worktree."
+                f"Retelling is checked out at {tree['worktree']}. Detach/remove that "
+                "worktree first, or use --remove-worktree to remove a clean worktree."
             )
-        if path.resolve() == repo.resolve() or path.resolve() in (
-            Path.cwd().resolve(),
-            *Path.cwd().resolve().parents,
-        ):
-            raise click.ClickException(
-                "Cannot remove the current worktree. Run delete from another checkout."
-            )
-        if (
-            "locked" in tree
-            or git(
-                path, "status", "--porcelain", "--untracked-files=all", "--ignored"
-            ).strip()
-        ):
-            raise click.ClickException(
-                f"Worktree {path} is locked or contains changes/untracked/ignored files; preserve them before deleting."
-            )
+        check_removable(repo, tree)
     refs = git(
         repo,
         "for-each-ref",
@@ -241,8 +277,7 @@ def delete(repo: Path, name: str, remove_worktree: bool = False) -> None:
         for ref, oid in (line.split() for line in refs.splitlines())
         if ref in expected
     ]
-    for tree in attached:
-        git(repo, "worktree", "remove", tree["worktree"])
+    remove_worktrees(repo, attached)
     git(
         repo,
         "update-ref",
