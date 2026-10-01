@@ -160,6 +160,7 @@ button.tag:hover { color: var(--text); }
 .badge.new { color: var(--new); background: var(--new-soft); }
 .badge.gone { color: var(--del); background: var(--del-bg); }
 .badge.mode { color: var(--muted); background: var(--rule-soft); }
+.badge.final { color: var(--accent); background: var(--accent-soft); }
 
 /* Code stage */
 section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-behavior: auto; }
@@ -453,6 +454,12 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <div><span class="sw real"></span>Deleted from the base</div>
     <div><span class="sw scaf"></span>Cleans up a line an earlier step added</div>
   </div>
+  <h3>Following a file</h3>
+  <div class="legend">
+    <div>◆ on the seek bar: the step where a file first appears</div>
+    <div>◇ on the seek bar: a step that deletes a file</div>
+    <div><span class="badge final">Final edit</span>&nbsp; no later step changes the file</div>
+  </div>
 </div></div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
@@ -529,6 +536,26 @@ function computeStats() { return D.slides.map((s) => {
   }
   return st;
 }); }
+// Each file's journey: the steps that change it, so the seek bar can mark where
+// it first appears and its card can say when an edit is its last.
+const EDITS = new Map();
+D.slides.forEach((s, i) => s.files.forEach((f) => {
+  if (!EDITS.has(f.path)) EDITS.set(f.path, []);
+  EDITS.get(f.path).push(i);
+}));
+const appearing = (i) => D.slides[i].files.filter((f) => EDITS.get(f.path)[0] === i);
+function stepList(steps) {
+  const n = steps.map((i) => i + 1);
+  return n.length < 3 ? n.join(" and ") : n.slice(0, -1).join(", ") + " and " + n[n.length - 1];
+}
+// A badge for a file's last edit; deletions already say so.
+function finalBadge(f, i, short) {
+  const steps = EDITS.get(f.path);
+  if (f.status === "D" || steps[steps.length - 1] !== i) return "";
+  const only = steps.length === 1;
+  const title = only ? "The only step that changes this file" : `No later step changes this file; it changes in steps ${stepList(steps)}`;
+  return `<span class="badge final" title="${title}">${short ? (only ? "Only" : "Final") : (only ? "Only edit" : "Final edit")}</span>`;
+}
 function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
 function fatesHtml(st) {
   const lines = [];
@@ -555,7 +582,7 @@ function splitPath(p) {
 
 function buildCard(file, index) {
   const rows = [];
-  const card = { key: "f:" + file.path, file, rows, total: 0, win: [0, 0], ticks: [] };
+  const card = { key: "f:" + file.path, file, step: index, rows, total: 0, win: [0, 0], ticks: [] };
   if (file.binary) {
     rows.push({ key: `n:${index}:${file.path}`, kind: "note", text: "Binary file changed" });
     return card;
@@ -734,6 +761,7 @@ function cardHead(card) {
   if (f.status === "A") badges += `<span class="badge new">New file</span>`;
   if (f.status === "D") badges += `<span class="badge gone">Deleted</span>`;
   if (f.oldMode !== f.newMode && f.status !== "A" && f.status !== "D") badges += `<span class="badge mode">${esc(f.oldMode)} → ${esc(f.newMode)}</span>`;
+  badges += finalBadge(f, card.step, false);
   const counts = f.binary ? `<span class="counts">binary</span>`
     : `<span class="counts"><span class="a">+${f.added}</span><span class="d">−${f.deleted}</span></span>`;
   const only = focusedOn(f.path);
@@ -791,7 +819,8 @@ function renderStory(dir) {
   const pct = Math.min(100, (s.lines / D.budget) * 100);
   const files = s.files.map((f, k) => {
     const [dir, base] = splitPath(f.path);
-    const badge = f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "";
+    const badge = (f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "")
+      + finalBadge(f, state.step, true);
     const counts = f.binary ? "binary" : `<span class="a">+${f.added}</span><span class="d">−${f.deleted}</span>`;
     return `<li data-k="${k}"><span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span>${badge}<span class="counts">${counts}</span></li>`;
   }).join("");
@@ -1071,7 +1100,7 @@ function buildTimeline() {
   let svg = `<svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none"><line class="axis" x1="0" x2="1000" y1="${mid}" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
   D.slides.forEach((s, i) => {
     const cx = xOf(i) * 1000, [a, d] = churn[i];
-    const introduced = s.files.some((f) => f.status === "A"), removed = s.files.some((f) => f.status === "D");
+    const introduced = appearing(i).length > 0, removed = s.files.some((f) => f.status === "D");
     svg += `<g data-s="${i}"${shownStep(i) ? "" : ` class="empty"`}>`;
     if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
     // Lines that reach the target sit against the axis; temporary ones stack outside.
@@ -1097,7 +1126,7 @@ function layoutFlags() {
   const lanes = [[], []];
   const free = (lane, a, b) => lanes[lane].every(([c, d]) => b <= c || a >= d);
   D.slides.forEach((s, i) => {
-    const added = s.files.filter((f) => f.status === "A"), gone = s.files.filter((f) => f.status === "D");
+    const added = appearing(i), gone = s.files.filter((f) => f.status === "D");
     const x = xOf(i) * width;
     for (const [list, cls] of [[gone, "gone"], [added, ""]]) {
       if (!list.length) continue;
@@ -1143,10 +1172,10 @@ function list(paths, cls, sign) {
 }
 function showHover(i) {
   const s = D.slides[i], hv = $("hover");
-  const added = s.files.filter((f) => f.status === "A").map((f) => f.path);
+  const added = appearing(i).map((f) => f.path + (f.status === "A" ? " (new)" : ""));
   const gone = s.files.filter((f) => f.status === "D").map((f) => f.path);
   hv.innerHTML = `<div class="hs">Step ${i + 1} · ${s.lines} lines</div><div>${inline(s.subject.replace(/^synthetic:\s*/i, ""))}</div>`
-    + list(added, "hn", "+") + list(gone, "hg", "−")
+    + list(added, "hn", "◆") + list(gone, "hg", "◇")
     + (STATS[i].temp || STATS[i].scaf ? `<div class="hf">${[
       STATS[i].temp && `${plural(STATS[i].temp, "temporary line")} added`,
       STATS[i].scaf && `${plural(STATS[i].scaf, "line")} cleaned up`].filter(Boolean).join(" · ")}</div>` : "");

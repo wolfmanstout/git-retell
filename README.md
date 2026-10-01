@@ -198,9 +198,13 @@ another file or edited in place counts as temporary; its tooltip names where
 identical text appears in the target.
 
 A seek bar charts each step's additions and deletions, with temporary lines
-drawn lighter and away from the axis. A fixed row marks every
-step that introduces (◆) or deletes (◇) files, and file names label them where
-space allows; hover for a step's subject and files, and click or drag to jump.
+drawn lighter and away from the axis. A fixed row marks the step where each
+file first appears in the retelling (◆), whether new or already in the base,
+and every step that deletes files (◇); file names label them where space
+allows. Hover for a step's subject and files, and click or drag to jump. A
+file's last change carries a "Final edit" badge ("Only edit" if one step
+changes it), whose tooltip lists every step that changes the file, so you can
+follow any file from its first appearance to its final version.
 Code is syntax highlighted with Pygments.
 
 A partial retelling shows a Partial tag in the header; click it or the sidebar's
