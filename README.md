@@ -222,8 +222,9 @@ budgets, and the VALID/INVALID status always cover every file.
 In the web viewer, the ◎ button on a file's header shows only that file (press
 it again to show all). The Files panel (`/`) lists every file the history
 touches, with checkboxes, plus a match box: plain text matches anywhere in a
-path, `*` and `?` match within a directory, and `**` spans directories. Enter
-shows the matching files and Shift+Enter hides them. Steps that change none of
+path, `*` and `?` match within a directory, and `**` spans directories. Its
+Show and Hide buttons (or Enter and Shift+Enter) show or hide the matching
+files; Only shows them and hides everything else. Steps that change none of
 the shown files fade on the seek bar and are skipped: next/previous pass over
 them, and clicking one on the seek bar lands on the nearest shown step.
 
