@@ -208,9 +208,34 @@ their real line counts. A retelling built from scratch is tagged as well.
 
 Web viewer controls: right/left arrow, `n`/`p`, or space: next and previous step.
 Home/End: first/last step. `j`/`k`: scroll. `+`/`-`: context, `0`: reset, `f`:
-whole files. `t`: theme. `?`: help and the line-lifetime legend. Esc: close a peek. The URL fragment remembers the step.
+whole files. `/`: choose files. `t`: theme. `?`: help and the line-lifetime
+legend. Esc: close a peek. The URL fragment remembers the step and file filter.
 The VALID/INVALID badge reflects the context given on the command line. Like
 `view`, live context changes in the page do not revalidate or change settings.
+
+## Filtering files while viewing
+
+Viewers can hide files after the fact, for example to skip tests or to follow
+one file through the history. Filters change only what is shown: validation,
+budgets, and the VALID/INVALID status always cover every file.
+
+In the web viewer, the ◎ button on a file's header shows only that file (press
+it again to show all). The Files panel (`/`) lists every file the history
+touches, with checkboxes, plus a match box: plain text matches anywhere in a
+path, `*` and `?` match within a directory, and `**` spans directories. Enter
+shows the matching files and Shift+Enter hides them. Steps that change none of
+the shown files fade on the seek bar and are skipped by next/previous.
+
+`show`, `view`, and `web` accept `--path` and `--exclude` with Git pathspecs,
+each repeatable. `show --all` and `view` skip steps that change none of the
+selected files; step numbers stay those of the full history. For `web`, the
+flags only choose the files shown at first. The page still embeds everything.
+
+```sh
+git-retell show demo --all --exclude tests/ --exclude '*.lock'
+git-retell view demo --path src/parser.py
+git-retell web demo --exclude tests/
+```
 
 ## Configuration
 

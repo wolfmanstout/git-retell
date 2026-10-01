@@ -36,8 +36,12 @@ def diff(
     numstat: bool = False,
     context: int = 3,
     paths: list[str] | None = None,
+    pathspecs: list[str] | None = None,
 ) -> str:
-    """Render BEFORE..AFTER, limited to the literal PATHS when given (even empty)."""
+    """Render BEFORE..AFTER, limited to the literal PATHS when given (even empty).
+
+    PATHSPECS are ordinary Git pathspecs, such as globs and :(exclude) patterns.
+    """
     if paths is not None and not paths:
         return ""
     options = (
@@ -70,6 +74,7 @@ def diff(
         after,
         "--",
         *(f":(literal){path}" for path in paths or []),
+        *(pathspecs or []),
     )
 
 
@@ -82,6 +87,13 @@ def changed_paths(repo: Path, before: str, after: str) -> set[str]:
     """Every file path whose entry differs, without rename detection."""
     output = git(repo, "diff", "--name-only", "-z", "--no-renames", before, after, "--")
     return {path for path in output.split("\0") if path}
+
+
+def pathspecs(include: tuple[str, ...], exclude: tuple[str, ...]) -> list[str] | None:
+    """Combine view filters into Git pathspecs; None means every file."""
+    if not include and not exclude:
+        return None
+    return [*include, *(f":(exclude){pattern}" for pattern in exclude)]
 
 
 def empty_tree(repo: Path) -> str:

@@ -154,3 +154,26 @@ def test_partial_payload_lists_omitted_files(repo, tmp_path):
         {"path": "uv.lock", "added": 3, "deleted": 0, "binary": False}
     ]
     assert resolve(repo, retelling.base, "tree") != resolve(repo, head, "tree")
+
+
+def test_initial_filter_selects_history_and_omitted_paths(repo, tmp_path):
+    (repo / "code.txt").write_text("after\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "t.py").write_text("x\n")
+    (repo / "big.lock").write_text("generated\n")
+    head = commit(repo, "Real change")
+    path = tmp_path / "author"
+    retelling = start(repo, "filt", "HEAD~1", head, path, 60, partial=True)
+    (path / "scratch.md").write_text("temporary\n")
+    commit(path, "Temporary notes")
+    (path / "scratch.md").unlink()
+    (path / "code.txt").write_text("after\n")
+    (path / "tests").mkdir()
+    (path / "tests" / "t.py").write_text("x\n")
+    commit(path, "Code and tests")
+    retelling = refresh(retelling)
+    assert web.payload(retelling)["initialShow"] is None
+    shown = web.payload(retelling, pathspecs=[":(exclude)tests/"])["initialShow"]
+    assert shown == ["big.lock", "code.txt", "scratch.md"]
+    shown = web.payload(retelling, pathspecs=["*.lock", "*.md"])["initialShow"]
+    assert shown == ["big.lock", "scratch.md"]

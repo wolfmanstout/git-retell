@@ -326,7 +326,40 @@ def numstats(repo: Path, before: str, after: str) -> dict[str, tuple[str, str]]:
     return result
 
 
-def payload(retelling: Retelling, context: int | None = None) -> dict:
+def selected_paths(retelling: Retelling, pathspecs: list[str]) -> list[str]:
+    """Every path the history or the omitted files have that PATHSPECS select."""
+    repo, tip = retelling.repo, retelling.tip
+    touched = git(
+        repo,
+        "log",
+        "--first-parent",
+        "--no-renames",
+        "--format=",
+        "--name-only",
+        "-z",
+        f"{retelling.base}..{tip}",
+        "--",
+        *pathspecs,
+    )
+    remaining = git(
+        repo,
+        "diff",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        tip,
+        retelling.target,
+        "--",
+        *pathspecs,
+    )
+    return sorted({path for path in (touched + "\0" + remaining).split("\0") if path})
+
+
+def payload(
+    retelling: Retelling,
+    context: int | None = None,
+    pathspecs: list[str] | None = None,
+) -> dict:
     context = retelling.context if context is None else context
     commits = retelling.commits()
     if not commits:
@@ -377,6 +410,10 @@ def payload(retelling: Retelling, context: int | None = None) -> dict:
             for item in report["omitted_files"]
         ],
         "slides": slides,
+        # The page starts showing only these paths; viewers can change it.
+        "initialShow": None
+        if pathspecs is None
+        else selected_paths(retelling, pathspecs),
         "versions": builder.versions,
         "text": builder.text,
         "html": builder.html,
@@ -404,8 +441,9 @@ def web(
     output: Path | None = None,
     open_browser: bool = True,
     context: int | None = None,
+    pathspecs: list[str] | None = None,
 ) -> Path:
-    document = page(payload(retelling, context))
+    document = page(payload(retelling, context, pathspecs))
     if output is None:
         directory = Path(tempfile.mkdtemp(prefix="git-retell-"))
         output = directory / f"{retelling.name}.html"

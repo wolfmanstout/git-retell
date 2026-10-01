@@ -26,6 +26,7 @@ def slide(
     index: int,
     *,
     context: int | None = None,
+    pathspecs: list[str] | None = None,
 ) -> str:
     context = retelling.context if context is None else context
     commit = commits[index]
@@ -33,8 +34,26 @@ def slide(
     kind = "partial retelling" if retelling.partial else "retelling"
     heading = f"SYNTHETIC explanatory {kind} · {retelling.name} · {index + 1}/{len(commits)} · {commit[:8]}"
     message = safe_text(retelling.message(commit))
-    patch = safe_text(diff(retelling.repo, previous, commit, context=context))
+    patch = safe_text(
+        diff(retelling.repo, previous, commit, context=context, pathspecs=pathspecs)
+    )
+    if pathspecs is not None:
+        heading += " · filtered"
+        patch = patch or "(No changes to the selected files in this step.)\n"
     return f"{heading}\n\n{message}\n\n{patch}"
+
+
+def selected_steps(retelling: Retelling, pathspecs: list[str] | None) -> list[int]:
+    """Indices of the steps that change any selected file."""
+    commits = retelling.commits()
+    if pathspecs is None:
+        return list(range(len(commits)))
+    parents = [retelling.base, *commits[:-1]]
+    return [
+        index
+        for index, (previous, commit) in enumerate(zip(parents, commits))
+        if diff(retelling.repo, previous, commit, numstat=True, pathspecs=pathspecs)
+    ]
 
 
 def dimensions(text: str) -> tuple[int, int]:
@@ -94,7 +113,11 @@ def page(
     return "\n".join(frame), offset, height, max(0, len(lines) - height)
 
 
-def view(retelling: Retelling, context: int | None = None) -> None:
+def view(
+    retelling: Retelling,
+    context: int | None = None,
+    pathspecs: list[str] | None = None,
+) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise click.ClickException(
             "view needs a terminal. Use show NAME --all for plain output."
@@ -104,8 +127,12 @@ def view(retelling: Retelling, context: int | None = None) -> None:
         raise click.ClickException(
             "No explanatory steps yet. Create commits in the authoring worktree."
         )
+    # Filtered views skip steps that change none of the selected files.
+    steps = selected_steps(retelling, pathspecs)
+    if not steps:
+        raise click.ClickException("No step changes the selected files.")
     initial_context = retelling.context if context is None else context
-    index, context, offset = 0, initial_context, 0
+    position, context, offset = 0, initial_context, 0
     status = ""
     validated_context = None
     cached = None
@@ -116,11 +143,16 @@ def view(retelling: Retelling, context: int | None = None) -> None:
                 "VALID" if inspect(retelling, context=context)["valid"] else "INVALID"
             )
             validated_context = context
+        index = steps[position]
         if cached != (index, context):
-            content = slide(retelling, commits, index, context=context)
+            content = slide(
+                retelling, commits, index, context=context, pathspecs=pathspecs
+            )
             cached = (index, context)
         terminal = shutil.get_terminal_size()
         label = f"{status} {index + 1}/{len(commits)} U{context}"
+        if pathspecs is not None:
+            label += f" filtered {position + 1}/{len(steps)}"
         frame, offset, height, bottom = page(
             content, label, offset, terminal.columns, terminal.lines
         )
@@ -129,11 +161,11 @@ def view(retelling: Retelling, context: int | None = None) -> None:
         key = click.getchar()
         if key.lower() == "q" or key == "\x1b":
             return
-        old_index, old_context = index, context
+        old_position, old_context = position, context
         if key in ("n", "\x1b[C", "\x1bOC") or (key == " " and offset == bottom):
-            index = min(index + 1, len(commits) - 1)
+            position = min(position + 1, len(steps) - 1)
         elif key in ("p", "\x1b[D", "\x1bOD"):
-            index = max(0, index - 1)
+            position = max(0, position - 1)
         elif key in ("j", "\x1b[B", "\x1bOB"):
             offset += 1
         elif key in ("k", "\x1b[A", "\x1bOA"):
@@ -152,5 +184,5 @@ def view(retelling: Retelling, context: int | None = None) -> None:
             context = max(0, context - 3)
         elif key == "0":
             context = initial_context
-        if (index, context) != (old_index, old_context):
+        if (position, context) != (old_position, old_context):
             offset = 0

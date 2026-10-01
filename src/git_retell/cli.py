@@ -6,13 +6,13 @@ from pathlib import Path
 import click
 
 from . import checks
-from .git import root
+from .git import pathspecs, root
 from .retelling import Retelling, inspect, names, save_settings, worktrees
 from .retelling import delete as delete_retelling
 from .retelling import finish as finish_retelling
 from .retelling import resume as resume_retelling
 from .retelling import start as start_retelling
-from .viewer import slide
+from .viewer import selected_steps, slide
 from .viewer import view as view_retelling
 from .web import web as web_retelling
 
@@ -139,6 +139,24 @@ def start(
         f"Budget: {budget} diff lines · context {context}{' · partial' if partial else ''}\n"
         f"Next: create explanatory commits, then git-retell finish {name}"
     )
+
+
+def file_filters(command):
+    """Add --path and --exclude, which narrow what a viewer shows, not validation."""
+    command = click.option(
+        "--exclude",
+        "exclude",
+        multiple=True,
+        metavar="PATHSPEC",
+        help="Hide files matching this Git pathspec. Repeatable.",
+    )(command)
+    return click.option(
+        "--path",
+        "include",
+        multiple=True,
+        metavar="PATHSPEC",
+        help="Show only files matching this Git pathspec. Repeatable.",
+    )(command)
 
 
 @cli.command()
@@ -289,25 +307,40 @@ def finish(name: str):
     type=click.IntRange(min=0),
     help="Override saved diff context for printed steps.",
 )
-def show(name: str, step: int, all_steps: bool, context: int | None):
+@file_filters
+def show(
+    name: str,
+    step: int,
+    all_steps: bool,
+    context: int | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+):
     """Print explanations and full diffs to stdout for reading or export.
 
     Steps are numbered from 1; by default only the first is printed. --all
     prints the complete sequence. Uses saved context unless overridden, and
     does not require a terminal or enforce the budget. Run validate separately.
 
+    --path and --exclude take Git pathspecs (directories, globs such as
+    '*.lock') and limit each diff to the matching files. With --all, steps that
+    change none of them are skipped; step numbers stay those of the full history.
+
     \b
     Examples:
       git-retell show demo --step 2 --context 10
       git-retell show demo --all > retelling.txt
       git-retell show demo --all | less
+      git-retell show demo --all --exclude tests/ --exclude '*.lock'
     """
     retelling = Retelling.load(root(), name)
     commits = retelling.commits()
     if not commits or (not all_steps and step > len(commits)):
         raise click.ClickException(f"Choose a step between 1 and {len(commits)}.")
-    for index in range(len(commits)) if all_steps else [step - 1]:
-        click.echo(slide(retelling, commits, index, context=context))
+    specs = pathspecs(include, exclude)
+    indices = selected_steps(retelling, specs) if all_steps else [step - 1]
+    for index in indices:
+        click.echo(slide(retelling, commits, index, context=context, pathspecs=specs))
 
 
 @cli.command()
@@ -317,7 +350,10 @@ def show(name: str, step: int, all_steps: bool, context: int | None):
     type=click.IntRange(min=0),
     help="Initial context; defaults to the retelling's saved setting.",
 )
-def view(name: str, context: int | None):
+@file_filters
+def view(
+    name: str, context: int | None, include: tuple[str, ...], exclude: tuple[str, ...]
+):
     """Browse synthetic steps with paging and adjustable diff context.
 
     n/p or right/left: next/previous step. j/k or down/up: scroll one line.
@@ -330,14 +366,23 @@ def view(name: str, context: int | None):
     displayed context, so expanding context can change VALID to INVALID if it
     exceeds the saved budget. Live changes never alter the saved defaults.
 
+    --path and --exclude take Git pathspecs and limit each diff to the matching
+    files; n/p skip steps that change none of them. Validation still covers
+    every file.
+
     \b
     Examples:
       git-retell view demo
       git-retell view demo --context 12
+      git-retell view demo --path src/parser.py
 
     A terminal is required. For a pipe, file, or pager, use show instead.
     """
-    view_retelling(Retelling.load(root(), name), context=context)
+    view_retelling(
+        Retelling.load(root(), name),
+        context=context,
+        pathspecs=pathspecs(include, exclude),
+    )
 
 
 @cli.command()
@@ -360,7 +405,15 @@ def view(name: str, context: int | None):
     show_default=True,
     help="Open the page in the default browser.",
 )
-def web(name: str, context: int | None, output: Path | None, open_browser: bool):
+@file_filters
+def web(
+    name: str,
+    context: int | None,
+    output: Path | None,
+    open_browser: bool,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+):
     """Write a self-contained HTML slideshow and open it in a browser.
 
     Transitions animate how each step connects to its neighbors: lines that
@@ -371,7 +424,12 @@ def web(name: str, context: int | None, output: Path | None, open_browser: bool)
     \b
     Keys: right/left or n/p: next/previous step. j/k: scroll.
     +/-: add/remove 3 context lines; 0: reset; f: toggle whole files.
-    Home/End: first/last step. ?: help.
+    /: choose which files to show. Home/End: first/last step. ?: help.
+
+    The Files panel (/) and each file's focus button hide files; navigation
+    then skips steps that change none of the shown files. --path and --exclude
+    take Git pathspecs and choose the files shown at first. The page still
+    embeds every file, so viewers can show the rest.
 
     The page embeds every file version it shows, needs no server or network,
     and can be shared as a single file. It is a snapshot; rerun after editing.
@@ -380,8 +438,15 @@ def web(name: str, context: int | None, output: Path | None, open_browser: bool)
     Examples:
       git-retell web demo
       git-retell web demo --no-open -o demo.html
+      git-retell web demo --exclude tests/ --exclude '*.lock'
     """
-    path = web_retelling(Retelling.load(root(), name), output, open_browser, context)
+    path = web_retelling(
+        Retelling.load(root(), name),
+        output,
+        open_browser,
+        context,
+        pathspecs(include, exclude),
+    )
     click.echo(f"Wrote {path}")
 
 

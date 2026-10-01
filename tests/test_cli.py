@@ -224,7 +224,9 @@ def test_context_flags_and_legacy_defaults(repo, tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(
         "git_retell.cli.view_retelling",
-        lambda retelling, context: calls.append((retelling.context, context)),
+        lambda retelling, context, pathspecs: calls.append(
+            (retelling.context, context)
+        ),
     )
     assert runner.invoke(cli, ["view", "demo", "--context", "6"]).exit_code == 0
     assert calls == [(0, 6)]
@@ -298,3 +300,21 @@ def test_start_partial_from_scratch_and_configure(repo, tmp_path):
     assert "complete" in result.output
     result = runner.invoke(cli, ["validate", "fresh", "--json"])
     assert result.exit_code == 1 and not json.loads(result.output)["partial"]
+
+
+def test_show_filters_files_and_skips_steps(repo, tmp_path):
+    _, path = example(repo, tmp_path)
+    (path / "notes.md").write_text("draft\n")
+    commit(path, "Only notes")
+    (path / "notes.md").unlink()
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Code and cleanup")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["show", "demo", "--all", "--exclude", "*.md"])
+    assert result.exit_code == 0, result.output
+    assert "Only notes" not in result.output and "notes.md" not in result.output
+    assert "2/2" in result.output and "filtered" in result.output
+    result = runner.invoke(cli, ["show", "demo", "--step", "1", "--path", "code.txt"])
+    assert "No changes to the selected files" in result.output
+    # Filters change only what is shown; validation still covers every file.
+    assert runner.invoke(cli, ["validate", "demo"]).exit_code == 0

@@ -303,6 +303,7 @@ footer.seek {
 .track .pat { fill: color-mix(in srgb, var(--add) 38%, transparent); }
 .track .pds { fill: color-mix(in srgb, var(--del) 38%, transparent); }
 .track .future { opacity: .32; transition: opacity .3s; }
+.track .empty { opacity: .1; }
 .track .stem { stroke: var(--new); stroke-width: 1; stroke-dasharray: 2 2; opacity: .55; }
 .track .stem.gone { stroke: var(--del); }
 .playhead {
@@ -324,6 +325,37 @@ footer.seek {
 .hover .hn { color: var(--new); font-size: 11.5px; margin-top: 4px; }
 .hover .hg { color: var(--del); font-size: 11.5px; }
 .hover .hf { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+/* File filter */
+.card-head .focus {
+  border: 0; background: transparent; color: var(--faint); cursor: pointer; padding: 0 2px;
+  font-size: 13px; line-height: 1; flex: none;
+}
+.card-head .focus:hover, .card-head .focus.on { color: var(--accent); }
+.files {
+  position: fixed; top: 48px; right: 16px; z-index: 20; width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 560px); display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 11px; box-shadow: var(--shadow);
+}
+.files[hidden] { display: none; }
+.files .fh { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--rule-soft); }
+.files input[type=search] {
+  flex: 1; min-width: 0; height: 28px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--rule);
+  background: var(--bg); color: var(--text); font: 12.5px ui-monospace, Menlo, monospace;
+}
+.files .fsum { display: flex; gap: 8px; align-items: center; padding: 7px 12px; font-size: 12px; color: var(--muted); }
+.files .fsum .spacer { flex: 1; }
+.files .linkish { border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; }
+.files ul { list-style: none; margin: 0; padding: 0 0 6px; overflow: auto; }
+.files li { display: flex; align-items: center; gap: 8px; padding: 3px 12px; font-size: 12.5px; }
+.files li:hover { background: var(--rule-soft); }
+.files li label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
+.files li.out { opacity: .55; }
+.files li.out label { cursor: default; }
+.files li .why { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.files li .only { visibility: hidden; }
+.files li:hover .only { visibility: visible; }
+.hiddenonly { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule-soft); padding-top: 10px; }
 
 /* Help */
 .help {
@@ -364,6 +396,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <span class="ctx-readout mono" id="ctx"></span>
     <button class="btn" id="more" title="More context (+)">+</button>
     <button class="btn" id="full" title="Whole files (f)">Whole files</button>
+    <button class="btn" id="filesbtn" title="Choose files (/)">Files</button>
     <button class="btn" id="theme" title="Theme (t)">◐</button>
     <button class="btn" id="helpbtn" title="Keys (?)">?</button>
   </div>
@@ -385,6 +418,15 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <div class="hover" id="hover"></div>
   </div>
 </footer>
+<div class="files" id="files" hidden>
+  <div class="fh">
+    <input type="search" id="fq" placeholder="Match: tests/  *.lock  parser" spellcheck="false" autocomplete="off">
+    <button class="btn" id="fshow" title="Show the matching files">Show</button>
+    <button class="btn" id="fhide" title="Hide the matching files">Hide</button>
+  </div>
+  <div class="fsum"><span id="fcount"></span><span class="spacer"></span><button class="linkish" id="fall">Show all</button></div>
+  <ul id="flist"></ul>
+</div>
 <div class="help" id="help"><div>
   <h2>Keys</h2>
   <dl>
@@ -395,6 +437,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>+ / −</dt><dd>More / less context</dd>
     <dt>0</dt><dd>Reset context</dd>
     <dt>f</dt><dd>Toggle whole files</dd>
+    <dt>/</dt><dd>Choose which files to show</dd>
+    <dt>◎</dt><dd>Show only this file (again: show all)</dd>
     <dt>t</dt><dd>Toggle theme</dd>
     <dt>?</dt><dd>This help</dd>
     <dt>click line no.</dt><dd>Peek at it in the target, or jump to the step that removes or added it</dd>
@@ -418,7 +462,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const ROW_H = 21;
 
-const state = { step: 0, ctx: D.context, full: false, focus: null, omittedOpen: false };
+const state = { step: 0, ctx: D.context, full: false, focus: null, omittedOpen: false, hidden: new Set() };
 let shown = null;      // model currently displayed (or being animated to)
 let gen = 0;           // transition generation; stale continuations bail out
 let running = [];      // animations of the transition in flight
@@ -471,7 +515,8 @@ function labelRuns(rows) {
     prev = label;
   }
 }
-const STATS = D.slides.map((s) => {
+let STATS = computeStats();
+function computeStats() { return D.slides.map((s) => {
   const st = { perm: 0, temp: 0, real: 0, scaf: 0 };
   for (const f of s.files) {
     if (f.binary) continue;
@@ -481,7 +526,7 @@ const STATS = D.slides.map((s) => {
     for (const id of before) if (!inAfter.has(id)) D.origin[id] < 0 ? st.real++ : st.scaf++;
   }
   return st;
-});
+}); }
 function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
 function fatesHtml(st) {
   const lines = [];
@@ -689,7 +734,9 @@ function cardHead(card) {
   if (f.oldMode !== f.newMode && f.status !== "A" && f.status !== "D") badges += `<span class="badge mode">${esc(f.oldMode)} → ${esc(f.newMode)}</span>`;
   const counts = f.binary ? `<span class="counts">binary</span>`
     : `<span class="counts"><span class="a">+${f.added}</span><span class="d">−${f.deleted}</span></span>`;
-  return `<div class="path mono">${esc(dir)}<b>${esc(base)}</b></div>${badges}${counts}<div class="ruler"><div class="win"></div></div>`;
+  const only = focusedOn(f.path);
+  const focus = `<button class="focus${only ? " on" : ""}" data-p="${esc(f.path)}" title="${only ? "Show all files" : "Show only this file"}">◎</button>`;
+  return `<div class="path mono">${esc(dir)}<b>${esc(base)}</b></div>${badges}${counts}${focus}<div class="ruler"><div class="win"></div></div>`;
 }
 
 function cardEl(card) {
@@ -754,7 +801,8 @@ function renderStory(dir) {
     <div class="meter${over ? " over" : ""}">${s.lines} of ${D.budget} diff lines at U${D.context}
       <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>
     <div class="fates">${fatesHtml(STATS[state.step])}</div>
-    <ul class="filelist">${files}</ul>
+    ${s.files.length || !s.all.length ? `<ul class="filelist">${files}</ul>`
+      : `<p class="hiddenonly">This step only changes hidden files (${plural(s.all.length, "file")}).</p>`}
     ${omittedHtml()}
   </div>`;
   const old = story.querySelector(".story-inner");
@@ -1000,14 +1048,14 @@ function followScroll(key, my, duration) {
 function updateChrome() {
   $("ctx").textContent = state.full ? "all" : "U" + state.ctx;
   $("full").classList.toggle("on", state.full);
-  $("prev").disabled = state.step === 0;
-  $("next").disabled = state.step === D.slides.length - 1;
+  $("prev").disabled = nextShown(state.step, -1) == null;
+  $("next").disabled = nextShown(state.step, 1) == null;
   const x = xOf(state.step);
   const ph = $("playhead");
   ph.style.left = x * 100 + "%";
   ph.dataset.n = state.step + 1;
   document.querySelectorAll("#track [data-s]").forEach((g) => g.classList.toggle("future", +g.dataset.s > state.step));
-  try { history.replaceState(null, "", "#" + (state.step + 1)); } catch (e) {}
+  try { history.replaceState(null, "", "#" + (state.step + 1) + filterHash()); } catch (e) {}
 }
 
 function xOf(i) { return (i + 0.5) / D.slides.length; }
@@ -1022,7 +1070,7 @@ function buildTimeline() {
   D.slides.forEach((s, i) => {
     const cx = xOf(i) * 1000, [a, d] = churn[i];
     const introduced = s.files.some((f) => f.status === "A"), removed = s.files.some((f) => f.status === "D");
-    svg += `<g data-s="${i}">`;
+    svg += `<g data-s="${i}"${shownStep(i) ? "" : ` class="empty"`}>`;
     if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
     // Lines that reach the target sit against the axis; temporary ones stack outside.
     const st = STATS[i], ha = scale(a), hd = scale(d);
@@ -1124,12 +1172,18 @@ function setContext(fn) {
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
+  if (!$("files").hidden && (k === "Escape" || e.target === $("fq"))) {
+    if (k === "Escape") { toggleFiles(false); e.preventDefault(); }
+    else if (k === "Enter") { e.preventDefault(); applyQuery(!e.shiftKey); }
+    return;
+  }
+  if (e.target instanceof HTMLInputElement) return;
   if (k === "Escape" && peekEl) { closePeek(); e.preventDefault(); return; }
   if ($("help").classList.contains("show") && k !== "?") { $("help").classList.remove("show"); if (k === "Escape") return; }
-  if (["ArrowRight", "n", "l", " "].includes(k)) goto(state.step + (e.shiftKey && k === " " ? -1 : 1));
-  else if (["ArrowLeft", "p", "h"].includes(k)) goto(state.step - 1);
-  else if (k === "Home") goto(0);
-  else if (k === "End") goto(D.slides.length - 1);
+  if (["ArrowRight", "n", "l", " "].includes(k)) step(e.shiftKey && k === " " ? -1 : 1);
+  else if (["ArrowLeft", "p", "h"].includes(k)) step(-1);
+  else if (k === "Home") goto(nextShown(-1, 1) ?? 0);
+  else if (k === "End") goto(nextShown(D.slides.length, -1) ?? D.slides.length - 1);
   else if (k === "j" || k === "ArrowDown") { stage.scrollBy({ top: ROW_H * 3 }); }
   else if (k === "k" || k === "ArrowUp") { stage.scrollBy({ top: -ROW_H * 3 }); }
   else if (k === "+" || k === "=") setContext(() => { state.full = false; state.ctx += 3; });
@@ -1137,12 +1191,13 @@ document.addEventListener("keydown", (e) => {
   else if (k === "0") setContext(() => { state.full = false; state.ctx = D.context; });
   else if (k === "f") setContext(() => { state.full = !state.full; });
   else if (k === "t") toggleTheme();
+  else if (k === "/") toggleFiles(true);
   else if (k === "?") $("help").classList.toggle("show");
   else return;
   e.preventDefault();
 });
-$("prev").onclick = () => goto(state.step - 1);
-$("next").onclick = () => goto(state.step + 1);
+$("prev").onclick = () => step(-1);
+$("next").onclick = () => step(1);
 $("more").onclick = () => setContext(() => { state.full = false; state.ctx += 3; });
 $("less").onclick = () => setContext(() => { state.full = false; state.ctx = Math.max(0, state.ctx - 3); });
 $("full").onclick = () => setContext(() => { state.full = !state.full; });
@@ -1210,6 +1265,115 @@ stage.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => { if (peekEl && !peekEl.contains(e.target)) closePeek(); });
 stage.addEventListener("scroll", closePeek, { passive: true });
 
+// ---------- File filter ----------
+
+// Hiding a file drops it from every slide; steps left with no shown files are
+// skipped by navigation and fade on the seek bar. Validation is unaffected.
+for (const s of D.slides) s.all = s.files;
+const PATHS = [...new Set(D.slides.flatMap((s) => s.all.map((f) => f.path)))].sort();
+const OMITTED = D.omitted.map((f) => f.path).filter((p) => !PATHS.includes(p));
+function shownStep(i) { return !state.hidden.size || D.slides[i].files.length > 0; }
+function nextShown(from, dir) {
+  for (let i = from + dir; i >= 0 && i < D.slides.length; i += dir) if (shownStep(i)) return i;
+  return null;
+}
+function step(dir) { const i = nextShown(state.step, dir); if (i != null) goto(i); else flashFocus(); }
+function focusedOn(path) { return state.hidden.size === PATHS.length - 1 && !state.hidden.has(path); }
+
+function setHidden(hidden) {
+  state.hidden = new Set([...hidden].filter((p) => PATHS.includes(p)));
+  for (const s of D.slides) s.files = s.all.filter((f) => !state.hidden.has(f.path));
+  STATS = computeStats();
+  buildTimeline();
+  renderFiles();
+  $("filesbtn").textContent = state.hidden.size ? `Files ${PATHS.length - state.hidden.size}/${PATHS.length}` : "Files";
+  $("filesbtn").classList.toggle("on", state.hidden.size > 0);
+}
+// After a change, stay on this step if it still shows something, else the nearest one that does.
+function refilter(hidden) {
+  setHidden(hidden);
+  if (!shownStep(state.step)) {
+    const i = nextShown(state.step, 1) ?? nextShown(state.step, -1);
+    if (i != null) { goto(i); return; }
+  }
+  go(0);
+}
+
+// Plain text matches anywhere in the path; * and ? are globs within one
+// directory, ** spans directories, and a trailing / matches a directory.
+function matcher(query) {
+  const q = query.trim();
+  if (!q) return () => true;
+  if (!/[*?]/.test(q)) return (p) => p.includes(q);
+  const re = q.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*\/?/g, "\0").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\0/g, ".*");
+  const rx = new RegExp((q.includes("/") ? "^" : "(^|/)") + re + "$");
+  return (p) => rx.test(p);
+}
+function applyQuery(show) {
+  const match = matcher($("fq").value);
+  const hidden = new Set(state.hidden);
+  for (const p of PATHS) if (match(p)) show ? hidden.delete(p) : hidden.add(p);
+  refilter(hidden);
+}
+function renderFiles() {
+  const match = matcher($("fq").value);
+  const row = (p, out) => {
+    const [dir, base] = splitPath(p);
+    const box = `<input type="checkbox" data-p="${esc(p)}"${out ? " disabled" : state.hidden.has(p) ? "" : " checked"}>`;
+    const tail = out ? `<span class="why">not retold</span>` : `<button class="linkish only" data-p="${esc(p)}">only</button>`;
+    return `<li class="${out ? "out" : ""}"><label>${box}<span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span></label>${tail}</li>`;
+  };
+  $("flist").innerHTML = PATHS.filter(match).map((p) => row(p, false)).join("")
+    + OMITTED.filter(match).map((p) => row(p, true)).join("");
+  const steps = D.slides.filter((s, i) => shownStep(i)).length;
+  $("fcount").textContent = `Showing ${PATHS.length - state.hidden.size} of ${plural(PATHS.length, "file")} · ${steps} of ${plural(D.slides.length, "step")}`;
+  $("fall").hidden = !state.hidden.size;
+}
+function toggleFiles(open) {
+  const el = $("files");
+  el.hidden = !(open ?? el.hidden);
+  if (!el.hidden) { renderFiles(); $("fq").focus(); $("fq").select(); }
+}
+function only(path) {
+  refilter(focusedOn(path) ? [] : PATHS.filter((p) => p !== path));
+}
+$("filesbtn").onclick = (e) => { e.stopPropagation(); toggleFiles(); };
+$("fq").addEventListener("input", renderFiles);
+$("fshow").onclick = () => applyQuery(true);
+$("fhide").onclick = () => applyQuery(false);
+$("fall").onclick = () => refilter([]);
+$("flist").addEventListener("change", (e) => {
+  const p = e.target.dataset.p, hidden = new Set(state.hidden);
+  e.target.checked ? hidden.delete(p) : hidden.add(p);
+  refilter(hidden);
+});
+$("flist").addEventListener("click", (e) => { if (e.target.classList.contains("only")) only(e.target.dataset.p); });
+stage.addEventListener("click", (e) => {
+  const b = e.target.closest(".focus");
+  if (b) { e.stopPropagation(); only(b.dataset.p); }
+});
+document.addEventListener("click", (e) => {
+  // The path, not containment: choosing a file re-renders the list under the click.
+  if (!$("files").hidden && !e.composedPath().includes($("files"))) toggleFiles(false);
+});
+
+// The fragment keeps the step and whichever of the shown or hidden lists is shorter.
+function filterHash() {
+  if (!state.hidden.size) return "";
+  const params = new URLSearchParams();
+  const showing = PATHS.filter((p) => !state.hidden.has(p));
+  if (showing.length < state.hidden.size) for (const p of showing) params.append("show", p);
+  else for (const p of state.hidden) params.append("hide", p);
+  return "&" + params;
+}
+function hashFilter(params) {
+  if (params.has("show")) { const show = new Set(params.getAll("show")); return PATHS.filter((p) => !show.has(p)); }
+  if (params.has("hide")) return params.getAll("hide");
+  if (D.initialShow) { const show = new Set(D.initialShow); return PATHS.filter((p) => !show.has(p)); }
+  return [];
+}
+
 // ---------- Start ----------
 
 try { const t = localStorage.getItem("git-retell-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -1230,9 +1394,11 @@ if (D.partial) {
     details.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 }
-const fromHash = parseInt(location.hash.slice(1), 10);
+const [stepPart, ...filterPart] = location.hash.slice(1).split("&");
+setHidden(hashFilter(new URLSearchParams(filterPart.join("&"))));
+const fromHash = parseInt(stepPart, 10);
 if (fromHash >= 1 && fromHash <= D.slides.length) state.step = fromHash - 1;
-buildTimeline();
+if (!shownStep(state.step)) state.step = nextShown(state.step, 1) ?? nextShown(state.step, -1) ?? state.step;
 go(0);
 </script>
 </body>
