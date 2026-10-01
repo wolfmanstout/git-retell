@@ -1214,8 +1214,8 @@ function toggleTheme() {
 
 const tl = $("timeline");
 let dragging = false;
-tl.addEventListener("pointerdown", (e) => { dragging = true; tl.setPointerCapture(e.pointerId); goto(stepAt(e.clientX)); });
-tl.addEventListener("pointermove", (e) => { const i = stepAt(e.clientX); showHover(i); if (dragging) goto(i); });
+tl.addEventListener("pointerdown", (e) => { dragging = true; tl.setPointerCapture(e.pointerId); goto(nearestShown(stepAt(e.clientX))); });
+tl.addEventListener("pointermove", (e) => { const i = nearestShown(stepAt(e.clientX)); showHover(i); if (dragging) goto(i); });
 tl.addEventListener("pointerup", () => { dragging = false; });
 tl.addEventListener("pointerleave", () => $("hover").classList.remove("show"));
 addEventListener("resize", () => { layoutFlags(); closePeek(); });
@@ -1277,6 +1277,13 @@ function nextShown(from, dir) {
   for (let i = from + dir; i >= 0 && i < D.slides.length; i += dir) if (shownStep(i)) return i;
   return null;
 }
+// The closest step with shown files (the later one on a tie), or I if none has any.
+function nearestShown(i) {
+  if (shownStep(i)) return i;
+  const after = nextShown(i, 1), before = nextShown(i, -1);
+  if (after == null) return before ?? i;
+  return before != null && i - before < after - i ? before : after;
+}
 function step(dir) { const i = nextShown(state.step, dir); if (i != null) goto(i); else flashFocus(); }
 function focusedOn(path) { return state.hidden.size === PATHS.length - 1 && !state.hidden.has(path); }
 
@@ -1290,13 +1297,11 @@ function setHidden(hidden) {
   $("filesbtn").classList.toggle("on", state.hidden.size > 0);
 }
 // After a change, stay on this step if it still shows something, else the nearest one that does.
+// Only a filter that hides every file leaves a step with nothing shown.
 function refilter(hidden) {
   setHidden(hidden);
-  if (!shownStep(state.step)) {
-    const i = nextShown(state.step, 1) ?? nextShown(state.step, -1);
-    if (i != null) { goto(i); return; }
-  }
-  go(0);
+  const i = nearestShown(state.step);
+  if (i !== state.step) goto(i); else go(0);
 }
 
 // Plain text matches anywhere in the path; * and ? are globs within one
@@ -1398,7 +1403,7 @@ const [stepPart, ...filterPart] = location.hash.slice(1).split("&");
 setHidden(hashFilter(new URLSearchParams(filterPart.join("&"))));
 const fromHash = parseInt(stepPart, 10);
 if (fromHash >= 1 && fromHash <= D.slides.length) state.step = fromHash - 1;
-if (!shownStep(state.step)) state.step = nextShown(state.step, 1) ?? nextShown(state.step, -1) ?? state.step;
+state.step = nearestShown(state.step);
 go(0);
 </script>
 </body>

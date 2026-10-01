@@ -224,7 +224,8 @@ it again to show all). The Files panel (`/`) lists every file the history
 touches, with checkboxes, plus a match box: plain text matches anywhere in a
 path, `*` and `?` match within a directory, and `**` spans directories. Enter
 shows the matching files and Shift+Enter hides them. Steps that change none of
-the shown files fade on the seek bar and are skipped by next/previous.
+the shown files fade on the seek bar and are skipped: next/previous pass over
+them, and clicking one on the seek bar lands on the nearest shown step.
 
 `show`, `view`, and `web` accept `--path` and `--exclude` with Git pathspecs,
 each repeatable. `show --all` and `view` skip steps that change none of the
