@@ -3,6 +3,9 @@
 Each file version is a list of line IDs. A step's unchanged lines keep their IDs
 and its added lines get new ones, so any two slides can be compared by ID. The
 browser uses this to collapse, move, recolor, and expand lines between slides.
+Each ID also records its lifetime: the step that introduced it, the step that
+removed it (if any), and whether a replacement took its place, so the browser
+can tell temporary scaffolding from lines that reach the target.
 """
 
 import html
@@ -146,6 +149,14 @@ class Builder:
         self.versions: list[list[int]] = []
         # Current line IDs of each file path, by version index.
         self.current: dict[str, int] = {}
+        # Lifetime of each ID: the introducing step (-1 for the base) and the
+        # removing step (None while present). Rewritten IDs were removed by a
+        # hunk that also added lines, so something replaced them.
+        self.origin: list[int] = []
+        self.ends: list[int | None] = []
+        self.rewritten: set[int] = set()
+        # The last step that touched each path.
+        self.touched: dict[str, int] = {}
 
     def lines_for(self, oid: str, content: dict[str, bytes], mode: str) -> list[str]:
         if oid == EMPTY:
@@ -155,7 +166,7 @@ class Builder:
         return split_lines(safe_text(content[oid].decode("utf-8", errors="replace")))
 
     def new_version(
-        self, path: str, lines: list[str], ids: Sequence[int | None]
+        self, path: str, lines: list[str], ids: Sequence[int | None], origin: int
     ) -> int:
         """Store IDs, minting new ones for None; highlight lines not yet seen."""
         colored = highlight(path, "\n".join(lines) + "\n") if lines else None
@@ -165,14 +176,21 @@ class Builder:
                 identity = len(self.text)
                 self.text.append(line)
                 self.html.append(None)
+                self.origin.append(origin)
+                self.ends.append(None)
             if self.html[identity] is None and colored is not None:
                 self.html[identity] = colored[number]
             result.append(identity)
         self.versions.append(result)
         return len(self.versions) - 1
 
-    def matched(self, before: str, after: str, old_ids: list[int], new_count: int):
-        """Carry IDs of unchanged lines through Git's own line matching."""
+    def matched(
+        self, before: str, after: str, old_ids: list[int], new_count: int
+    ) -> tuple[list[int | None], set[int]]:
+        """Carry IDs of unchanged lines through Git's own line matching.
+
+        Also return the old IDs removed by hunks that add lines in their place.
+        """
         patch = git(
             self.retelling.repo,
             "diff",
@@ -186,6 +204,7 @@ class Builder:
             after,
         )
         ids: list[int | None] = []
+        replaced: set[int] = set()
         old = 0
         for match in HUNK.finditer(patch):
             start, count, new_start, new_count_hunk = (
@@ -199,13 +218,22 @@ class Builder:
             new_unchanged = (new_start - 1 if new_count_hunk else new_start) - len(ids)
             ids.extend(old_ids[old : old + new_unchanged])
             old = unchanged_until + count
+            if count and new_count_hunk:
+                replaced.update(old_ids[old - count : old])
             ids.extend([None] * new_count_hunk)
         ids.extend(old_ids[old:])
         if len(ids) != new_count:
-            return [None] * new_count
-        return ids
+            return [None] * new_count, set(old_ids) if new_count else set()
+        return ids, replaced
 
-    def step(self, previous: str, commit: str, content: dict[str, bytes], raw):
+    def remove(self, ids: Sequence[int], number: int) -> None:
+        for identity in ids:
+            if self.ends[identity] is None:
+                self.ends[identity] = number
+
+    def step(
+        self, number: int, previous: str, commit: str, content: dict[str, bytes], raw
+    ):
         files = []
         numstat = numstats(self.retelling.repo, previous, commit)
         for old_mode, new_mode, old_oid, new_oid, status, path in raw:
@@ -221,30 +249,56 @@ class Builder:
                 "deleted": 0 if binary else int(minus),
             }
             if binary:
-                self.current.pop(path, None)
+                if path in self.current:
+                    self.remove(self.versions[self.current.pop(path)], number)
             else:
                 old_lines = self.lines_for(old_oid, content, old_mode)
                 new_lines = self.lines_for(new_oid, content, new_mode)
                 if path not in self.current or len(
                     self.versions[self.current[path]]
                 ) != len(old_lines):
+                    # Untouched until now, the text came from the base or from
+                    # the step that last made it binary.
                     self.current[path] = self.new_version(
-                        path, old_lines, [None] * len(old_lines)
+                        path,
+                        old_lines,
+                        [None] * len(old_lines),
+                        self.touched.get(path, -1),
                     )
                 before = self.current[path]
+                old_ids = self.versions[before]
                 if new_oid == EMPTY:
-                    ids = []
+                    ids, replaced = [], set()
                 elif old_oid == EMPTY or old_mode == "160000" or new_mode == "160000":
                     ids = [None] * len(new_lines)
+                    replaced = set(old_ids) if new_lines else set()
                 else:
-                    ids = self.matched(
-                        old_oid, new_oid, self.versions[before], len(new_lines)
+                    ids, replaced = self.matched(
+                        old_oid, new_oid, old_ids, len(new_lines)
                     )
-                after = self.new_version(path, new_lines, ids)
+                kept = {i for i in ids if i is not None}
+                self.remove([i for i in old_ids if i not in kept], number)
+                self.rewritten |= replaced - kept
+                after = self.new_version(path, new_lines, ids, number)
                 self.current[path] = after
                 entry.update(before=before, after=after)
+            self.touched[path] = number
             files.append(entry)
         return files
+
+    def lifetimes(self) -> dict:
+        """Mark lines in the target as surviving (-1) and name its file versions."""
+        target = dict(self.current)
+        ends = list(self.ends)
+        for version in target.values():
+            for identity in self.versions[version]:
+                ends[identity] = -1
+        return {
+            "origin": self.origin,
+            "ends": ends,
+            "rewritten": sorted(self.rewritten),
+            "targetVersions": target,
+        }
 
 
 def raw_changes(repo: Path, before: str, after: str) -> list[tuple[str, ...]]:
@@ -299,7 +353,7 @@ def payload(retelling: Retelling, context: int | None = None) -> dict:
                 "subject": subject,
                 "body": without_trailers(body),
                 "lines": report["steps"][number]["presentation_lines"],
-                "files": builder.step(previous, commit, content, raw),
+                "files": builder.step(number, previous, commit, content, raw),
             }
         )
     return {
@@ -315,6 +369,7 @@ def payload(retelling: Retelling, context: int | None = None) -> dict:
         "versions": builder.versions,
         "text": builder.text,
         "html": builder.html,
+        **builder.lifetimes(),
     }
 
 

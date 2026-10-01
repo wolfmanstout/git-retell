@@ -160,14 +160,26 @@ viewer can animate the difference between any two slides:
   block openers, not control flow) or from Markdown heading levels, and update
   as you change context.
 
-A seek bar charts each step's additions and deletions. A fixed row marks every
+Line identities also show which code is temporary. Added lines that a later
+step removes get hatched line numbers and a label such as "rewritten in step 5"
+(a hunk replaced them) or "removed in step 5"; deleted lines that an earlier
+step added are muted and labeled "from step 2", so full-strength red and green
+mark the real B → H change. Click a line number or label to jump to the step
+that removes or added the line; for a line that survives, clicking shows it in
+place in the target with a few lines around it. The sidebar counts each kind of
+line. Identity follows Git's line matching within one path, so a line moved to
+another file or edited in place counts as temporary; its tooltip names where
+identical text appears in the target.
+
+A seek bar charts each step's additions and deletions, with temporary lines
+drawn lighter and away from the axis. A fixed row marks every
 step that introduces (◆) or deletes (◇) files, and file names label them where
 space allows; hover for a step's subject and files, and click or drag to jump.
 Code is syntax highlighted with Pygments.
 
 Web viewer controls: right/left arrow, `n`/`p`, or space: next and previous step.
 Home/End: first/last step. `j`/`k`: scroll. `+`/`-`: context, `0`: reset, `f`:
-whole files. `t`: theme. `?`: help. The URL fragment remembers the step.
+whole files. `t`: theme. `?`: help and the line-lifetime legend. Esc: close a peek. The URL fragment remembers the step.
 The VALID/INVALID badge reflects the context given on the command line. Like
 `view`, live context changes in the page do not revalidate or change settings.
 

@@ -104,3 +104,36 @@ def test_trailers_are_dropped_but_prose_is_kept():
     assert web.without_trailers("Explain.\n\nFixes: #3\nsee above") == (
         "Explain.\n\nFixes: #3\nsee above"
     )
+
+
+def test_lifetimes_separate_scaffolding_from_lines_that_reach_the_target(
+    repo, tmp_path
+):
+    final = "def parse(s):\n    tokens = lex(s)\n    return build(tokens)\nkeep\n"
+    (repo / "code.txt").write_text("legacy_parse(s)\nkeep\n")
+    commit(repo, "Base")
+    retelling, path = example(repo, tmp_path, target=final)
+    (path / "code.txt").write_text(
+        "def parse(s):\n    return None  # stub\nlegacy_parse(s)\nkeep\nscratch\n"
+    )
+    commit(path, "Add a stub")
+    (path / "code.txt").write_text(final)
+    commit(path, "Replace the stub and the legacy parser")
+    data = web.payload(refresh(retelling))
+    text = data["text"]
+
+    def ident(line):
+        return next(i for i, t in enumerate(text) if t == line)
+
+    stub, legacy = ident("    return None  # stub"), ident("legacy_parse(s)")
+    header, scratch = ident("def parse(s):"), ident("scratch")
+    assert (data["origin"][header], data["ends"][header]) == (0, -1)
+    assert (data["origin"][ident("keep")], data["ends"][ident("keep")]) == (-1, -1)
+    assert (data["origin"][stub], data["ends"][stub]) == (0, 1)
+    assert (data["origin"][legacy], data["ends"][legacy]) == (-1, 1)
+    assert (data["origin"][scratch], data["ends"][scratch]) == (0, 1)
+    # The stub and legacy line were replaced; the trailing scratch line was not.
+    assert stub in data["rewritten"] and scratch not in data["rewritten"]
+    ids = data["versions"][data["targetVersions"]["code.txt"]]
+    assert [text[i] for i in ids] == final.splitlines()
+    assert all(data["ends"][i] == -1 for i in ids)

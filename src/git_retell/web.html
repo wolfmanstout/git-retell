@@ -183,7 +183,7 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .rows-inner { display: inline-block; min-width: 100%; }
 .row {
   --lh: 21px;
-  display: flex; height: var(--lh); line-height: var(--lh); white-space: pre; overflow: hidden;
+  display: flex; height: var(--lh); line-height: var(--lh); white-space: pre; overflow: clip;
   transition: background-color .45s ease;
 }
 .row .no {
@@ -226,6 +226,44 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .cd .d { color: var(--tk-d); } .cd .b { color: var(--tk-b); } .cd .g { color: var(--tk-g); }
 .cd .a { color: var(--tk-a); } .cd .o { color: var(--tk-o); } .cd .h { color: var(--tk-h); font-weight: 600; }
 .cd .e { font-style: italic; }
+/* Line lifetimes: hatched gutters mark lines that never reach the target. */
+/* A zero-width anchor stuck to the visible right edge, so labels never widen a row. */
+.row .ft { flex: none; width: 0; margin-left: auto; position: sticky; right: 0; }
+.row .ft > span {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font: 10.5px/15px -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; white-space: nowrap;
+  color: var(--muted); background: var(--card); border: 1px dashed var(--faint); border-radius: 99px; padding: 0 7px;
+  cursor: pointer; user-select: none;
+}
+.row.act .no { cursor: pointer; }
+.row.act .no:hover { color: var(--accent); }
+.row.add.temp { background: color-mix(in srgb, var(--add-bg) 55%, transparent); }
+.row.add.temp .no { background: repeating-linear-gradient(135deg, var(--add-gutter) 0 3px, transparent 3px 6px); }
+.row.add.temp .ft > span { color: color-mix(in srgb, var(--add) 75%, var(--muted)); border-color: color-mix(in srgb, var(--add) 45%, transparent); }
+.row.ctx.temp .no { background: repeating-linear-gradient(135deg, var(--rule-soft) 0 3px, transparent 3px 6px); }
+.row.del.scaf { background: color-mix(in srgb, var(--del-bg) 45%, transparent); }
+.row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); color: var(--faint); }
+.row.del.scaf .sg { opacity: .5; }
+.row.del.scaf .cd { opacity: .32; }
+.peek {
+  position: fixed; z-index: 8; width: min(680px, calc(100vw - 32px));
+  background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+}
+.peek .ph {
+  display: flex; gap: 10px; align-items: center; padding: 6px 12px; font-size: 12px; color: var(--muted);
+  background: var(--card-head); border-bottom: 1px solid var(--rule-soft);
+}
+.peek .ph .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.peek .ph b { color: var(--text); font-weight: 600; }
+.peek .row.hit { background: var(--accent-soft); }
+.peek .row.hit .no { color: var(--accent); }
+.fates { margin: -8px 0 20px; font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
+.fates b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
+.sw.perm { background: var(--add); }
+.sw.temp { background: repeating-linear-gradient(135deg, var(--add) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--add); }
+.sw.real { background: var(--del); }
+.sw.scaf { background: repeating-linear-gradient(135deg, var(--del) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--del); }
 .row.flash { animation: flash 1.1s ease-out; }
 @keyframes flash { from { box-shadow: inset 3px 0 0 var(--accent); } to { box-shadow: inset 3px 0 0 transparent; } }
 
@@ -253,6 +291,8 @@ footer.seek {
 .track svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .track .axis { stroke: var(--rule); stroke-width: 1; }
 .track .pa { fill: var(--add); } .track .pd { fill: var(--del); }
+.track .pat { fill: color-mix(in srgb, var(--add) 38%, transparent); }
+.track .pds { fill: color-mix(in srgb, var(--del) 38%, transparent); }
 .track .future { opacity: .32; transition: opacity .3s; }
 .track .stem { stroke: var(--new); stroke-width: 1; stroke-dasharray: 2 2; opacity: .55; }
 .track .stem.gone { stroke: var(--del); }
@@ -274,6 +314,7 @@ footer.seek {
 .hover .hs { color: var(--muted); font-size: 11px; }
 .hover .hn { color: var(--new); font-size: 11.5px; margin-top: 4px; }
 .hover .hg { color: var(--del); font-size: 11.5px; }
+.hover .hf { color: var(--muted); font-size: 11px; margin-top: 4px; }
 
 /* Help */
 .help {
@@ -286,6 +327,8 @@ footer.seek {
 .help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
 .help dt { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
 .help dd { margin: 0; color: var(--muted); }
+.help h3 { margin: 16px 0 8px; font-size: 13px; }
+.help .legend { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); max-width: 420px; }
 kbd { font: 11px ui-monospace, Menlo, monospace; }
 
 @media (max-width: 860px) {
@@ -343,7 +386,16 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>f</dt><dd>Toggle whole files</dd>
     <dt>t</dt><dd>Toggle theme</dd>
     <dt>?</dt><dd>This help</dd>
+    <dt>click line no.</dt><dd>Peek at it in the target, or jump to the step that removes or added it</dd>
+    <dt>Esc</dt><dd>Close the peek</dd>
   </dl>
+  <h3>Line lifetimes</h3>
+  <div class="legend">
+    <div><span class="sw perm"></span>Added and reaches the target</div>
+    <div><span class="sw temp"></span>Temporary: a later step removes or rewrites it</div>
+    <div><span class="sw real"></span>Deleted from the base</div>
+    <div><span class="sw scaf"></span>Cleans up a line an earlier step added</div>
+  </div>
 </div></div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
@@ -355,11 +407,79 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const ROW_H = 21;
 
-const state = { step: 0, ctx: D.context, full: false };
+const state = { step: 0, ctx: D.context, full: false, focus: null };
 let shown = null;      // model currently displayed (or being animated to)
 let gen = 0;           // transition generation; stale continuations bail out
 let running = [];      // animations of the transition in flight
 let lastNav = 0;
+
+// ---------- Lifetimes ----------
+
+// Where each line ends up: the target location of lines that survive, and of
+// identical text elsewhere for lines that don't (moved between files, retyped).
+const REWRITTEN = new Set(D.rewritten);
+const FINAL = new Map(), FINAL_TEXT = new Map();
+// Blank lines and lone brackets match arbitrarily, so they get no labels.
+function trivial(t) { return !/[\p{L}\p{N}_]/u.test(t); }
+for (const [path, v] of Object.entries(D.targetVersions)) {
+  D.versions[v].forEach((id, k) => {
+    const at = { path, v, k };
+    FINAL.set(id, at);
+    const t = D.text[id].trim();
+    if (!trivial(t) && !FINAL_TEXT.has(t)) FINAL_TEXT.set(t, at);
+  });
+}
+const temporary = (id) => D.ends[id] != null && D.ends[id] >= 0;
+function fateOf(kind, id) {
+  const end = D.ends[id], origin = D.origin[id];
+  if (kind === "del") {
+    if (origin < 0) return null;
+    return { cls: "scaf", label: `from step ${origin + 1}`, jump: origin,
+      title: `Cleans up a line step ${origin + 1} added; click the line number to go there` };
+  }
+  if (end == null) return null;
+  if (end < 0) {
+    const at = FINAL.get(id);
+    return { cls: "", peek: at, title: `In the target at ${at.path}:${at.k + 1}; click the line number to peek` };
+  }
+  const verb = REWRITTEN.has(id) ? "rewritten" : "removed";
+  const same = FINAL_TEXT.get(D.text[id].trim());
+  return { cls: "temp", label: `${verb} in step ${end + 1}`, jump: end,
+    title: `Temporary: ${verb} in step ${end + 1}; click the line number to go there`
+      + (same ? `\nThe same text is in the target at ${same.path}:${same.k + 1}` : "") };
+}
+// Label only the first line of each run so a block reads as one unit. Any
+// other line ends the run, except changed blank lines and lone brackets.
+function labelRuns(rows) {
+  let prev = null;
+  for (const r of rows) {
+    const changed = r.kind === "add" || r.kind === "del";
+    if (changed && trivial(D.text[r.id])) continue;
+    const label = changed && r.fate ? r.fate.label : null;
+    if (label && label !== prev) r.pill = label;
+    prev = label;
+  }
+}
+const STATS = D.slides.map((s) => {
+  const st = { perm: 0, temp: 0, real: 0, scaf: 0 };
+  for (const f of s.files) {
+    if (f.binary) continue;
+    const before = D.versions[f.before], after = D.versions[f.after];
+    const inBefore = new Set(before), inAfter = new Set(after);
+    for (const id of after) if (!inBefore.has(id)) temporary(id) ? st.temp++ : st.perm++;
+    for (const id of before) if (!inAfter.has(id)) D.origin[id] < 0 ? st.real++ : st.scaf++;
+  }
+  return st;
+});
+function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
+function fatesHtml(st) {
+  const lines = [];
+  if (st.perm) lines.push(`<span class="sw perm"></span><b>${plural(st.perm, "added line")}</b> reach${st.perm === 1 ? "es" : ""} the target`);
+  if (st.temp) lines.push(`<span class="sw temp"></span><b>${plural(st.temp, "added line")}</b> ${st.temp === 1 ? "is" : "are"} temporary`);
+  if (st.real) lines.push(`<span class="sw real"></span><b>${plural(st.real, "deleted line")}</b> from the base`);
+  if (st.scaf) lines.push(`<span class="sw scaf"></span><b>${plural(st.scaf, "deleted line")}</b> clean${st.scaf === 1 ? "s" : ""} up earlier steps`);
+  return lines.map((l) => `<div>${l}</div>`).join("");
+}
 
 // ---------- Model ----------
 
@@ -407,7 +527,7 @@ function buildCard(file, index) {
   for (let k = 0; k < merged.length;) {
     if (show[k]) {
       const r = merged[k];
-      rows.push({ key: "l:" + r.id, kind: r.kind, id: r.id, no: r.no });
+      rows.push({ key: "l:" + r.id, kind: r.kind, id: r.id, no: r.no, fate: fateOf(r.kind, r.id) });
       if (first < 0) first = k;
       last = k;
       k++;
@@ -424,6 +544,7 @@ function buildCard(file, index) {
       k = e;
     }
   }
+  labelRuns(rows);
   if (!changed && file.oldMode !== file.newMode) {
     rows.unshift({ key: `n:${index}:${file.path}`, kind: "note", text: `mode ${file.oldMode} → ${file.newMode}` });
   }
@@ -514,17 +635,21 @@ function rowEl(r) {
   const el = document.createElement("div");
   el.className = "row " + r.kind;
   el.dataset.key = r.key;
-  el.innerHTML = `<span class="no"></span><span class="sg"></span><span class="cd"></span>`;
+  el.innerHTML = `<span class="no"></span><span class="sg"></span><span class="cd"></span><span class="ft"></span>`;
   fillRow(el, r);
   return el;
 }
 function fillRow(el, r) {
-  el.className = "row " + r.kind;
-  const [no, sg, cd] = el.children;
+  const f = r.fate;
+  el.className = "row " + r.kind + (f && f.cls ? " " + f.cls : "") + (f ? " act" : "");
+  el._r = r;
+  const [no, sg, cd, ft] = el.children;
   no.textContent = r.no ?? "";
+  ft.innerHTML = r.pill ? `<span>${esc(r.pill)}</span>` : "";
   sg.textContent = r.kind === "add" ? "+" : r.kind === "del" ? "−" : r.kind === "gap" ? (r.scope && r.scope.length ? "↥" : "⋯") : "";
   if (r.id != null) {
     if (!el._filled) { cd.innerHTML = lineHtml(r.id) || " "; el._filled = true; }
+    if (f) el.title = f.title; else el.removeAttribute("title");
   } else if (r.scope && r.scope.length) {
     const inner = r.scope[r.scope.length - 1];
     el.classList.add("scoped");
@@ -617,6 +742,7 @@ function renderStory(dir) {
     <div class="body">${body}</div>
     <div class="meter${over ? " over" : ""}">${s.lines} of ${D.budget} diff lines at U${D.context}
       <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>
+    <div class="fates">${fatesHtml(STATS[state.step])}</div>
     <ul class="filelist">${files}</ul>
   </div>`;
   const old = story.querySelector(".story-inner");
@@ -690,13 +816,16 @@ function settle() {
 }
 
 function anchorOf(model) {
+  if (state.focus && model.cards.some((c) => c.rows.some((r) => r.key === state.focus))) return state.focus;
   for (const c of model.cards) for (const r of c.rows) if (r.kind === "add" || r.kind === "del") return r.key;
   return null;
 }
 
 async function go(dir) {
   const target = buildModel();
+  const anchor = anchorOf(target);
   const my = ++gen;
+  closePeek();
   const now = performance.now();
   const hurried = now - lastNav < 380;   // key held down or rapid clicks: move faster
   lastNav = now;
@@ -704,7 +833,7 @@ async function go(dir) {
   if (busy) settle();
   updateChrome();
   renderStory(dir);
-  if (!shown || reduced || document.hidden) { paint(target); scrollToAnchor(target, false); return; }
+  if (!shown || reduced || document.hidden) { paint(target); scrollToAnchor(anchor); flashFocus(); return; }
 
   const speed = hurried || busy ? 0.55 : 1;
   const T = (ms) => ms * speed;
@@ -796,10 +925,21 @@ async function go(dir) {
     }
     prev = el;
   });
-  followScroll(target, my, T(720));
+  followScroll(anchor, my, T(720));
   await done(enters);
   if (my !== gen) return;
   running = [];
+  flashFocus();
+}
+
+function flashFocus() {
+  const key = state.focus;
+  state.focus = null;
+  const el = key && stage.querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (!el) return;
+  el.classList.remove("flash");
+  void el.offsetWidth;
+  el.classList.add("flash");
 }
 
 function anchorTop(key) {
@@ -808,21 +948,20 @@ function anchorTop(key) {
   const a = el.getBoundingClientRect().top, b = stage.getBoundingClientRect().top;
   return stage.scrollTop + (a - b);
 }
-function desiredScroll(model) {
-  const key = anchorOf(model);
+function desiredScroll(key) {
   const max = stage.scrollHeight - stage.clientHeight;
   return Math.max(0, Math.min(max, anchorTop(key) - stage.clientHeight * 0.22 - ROW_H * 3));
 }
-function scrollToAnchor(model) { stage.scrollTop = desiredScroll(model); }
+function scrollToAnchor(key) { stage.scrollTop = desiredScroll(key); }
 
 // Glide toward the first change while lines expand, re-aiming as the layout grows.
-function followScroll(model, my, duration) {
+function followScroll(key, my, duration) {
   const start = performance.now(), from = stage.scrollTop;
   const step = (t) => {
     if (my !== gen) return;
     const p = Math.min(1, (t - start) / duration);
     const e = 1 - Math.pow(1 - p, 3);
-    stage.scrollTop = from + (desiredScroll(model) - from) * e;
+    stage.scrollTop = from + (desiredScroll(key) - from) * e;
     if (p < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -847,7 +986,7 @@ function xOf(i) { return (i + 0.5) / D.slides.length; }
 
 function buildTimeline() {
   const n = D.slides.length;
-  const churn = D.slides.map((s) => s.files.reduce((a, f) => [a[0] + f.added, a[1] + f.deleted], [0, 0]));
+  const churn = STATS.map((st) => [st.perm + st.temp, st.real + st.scaf]);
   const peak = Math.max(1, ...churn.map(([a, d]) => Math.max(a, d)));
   const H = 44, mid = 22, scale = (v) => v ? Math.max(1.5, Math.sqrt(v / peak) * (mid - 3)) : 0;
   const bw = Math.max(1, Math.min(14, 1000 / n * 0.6));
@@ -857,8 +996,12 @@ function buildTimeline() {
     const introduced = s.files.some((f) => f.status === "A"), removed = s.files.some((f) => f.status === "D");
     svg += `<g data-s="${i}">`;
     if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
-    svg += `<rect class="pa" x="${cx - bw / 2}" y="${mid - scale(a)}" width="${bw}" height="${scale(a)}" rx="1"/>`;
-    svg += `<rect class="pd" x="${cx - bw / 2}" y="${mid}" width="${bw}" height="${scale(d)}" rx="1"/></g>`;
+    // Lines that reach the target sit against the axis; temporary ones stack outside.
+    const st = STATS[i], ha = scale(a), hd = scale(d);
+    const hp = a ? ha * st.perm / a : 0, hr = d ? hd * st.real / d : 0;
+    const bar = (cls, y, h) => h > 0.01 ? `<rect class="${cls}" x="${cx - bw / 2}" y="${y}" width="${bw}" height="${h}"/>` : "";
+    svg += bar("pat", mid - ha, ha - hp) + bar("pa", mid - hp, hp);
+    svg += bar("pd", mid, hr) + bar("pds", mid + hr, hd - hr) + "</g>";
   });
   $("track").innerHTML = svg + "</svg>";
   layoutFlags();
@@ -925,7 +1068,10 @@ function showHover(i) {
   const added = s.files.filter((f) => f.status === "A").map((f) => f.path);
   const gone = s.files.filter((f) => f.status === "D").map((f) => f.path);
   hv.innerHTML = `<div class="hs">Step ${i + 1} · ${s.lines} lines</div><div>${inline(s.subject.replace(/^synthetic:\s*/i, ""))}</div>`
-    + list(added, "hn", "+") + list(gone, "hg", "−");
+    + list(added, "hn", "+") + list(gone, "hg", "−")
+    + (STATS[i].temp || STATS[i].scaf ? `<div class="hf">${[
+      STATS[i].temp && `${plural(STATS[i].temp, "temporary line")} added`,
+      STATS[i].scaf && `${plural(STATS[i].scaf, "line")} cleaned up`].filter(Boolean).join(" · ")}</div>` : "");
   const w = $("timeline").clientWidth;
   const x = xOf(i) * w;
   hv.style.left = Math.max(140, Math.min(w - 140, x)) + "px";
@@ -936,7 +1082,7 @@ function showHover(i) {
 
 function goto(i) {
   i = Math.max(0, Math.min(D.slides.length - 1, i));
-  if (i === state.step) return;
+  if (i === state.step) { flashFocus(); return; }
   const dir = Math.sign(i - state.step);
   state.step = i;
   go(dir);
@@ -950,6 +1096,7 @@ function setContext(fn) {
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
+  if (k === "Escape" && peekEl) { closePeek(); e.preventDefault(); return; }
   if ($("help").classList.contains("show") && k !== "?") { $("help").classList.remove("show"); if (k === "Escape") return; }
   if (["ArrowRight", "n", "l", " "].includes(k)) goto(state.step + (e.shiftKey && k === " " ? -1 : 1));
   else if (["ArrowLeft", "p", "h"].includes(k)) goto(state.step - 1);
@@ -988,7 +1135,52 @@ tl.addEventListener("pointerdown", (e) => { dragging = true; tl.setPointerCaptur
 tl.addEventListener("pointermove", (e) => { const i = stepAt(e.clientX); showHover(i); if (dragging) goto(i); });
 tl.addEventListener("pointerup", () => { dragging = false; });
 tl.addEventListener("pointerleave", () => $("hover").classList.remove("show"));
-addEventListener("resize", layoutFlags);
+addEventListener("resize", () => { layoutFlags(); closePeek(); });
+
+// ---------- Peek and jump ----------
+
+let peekEl = null;
+function closePeek() {
+  if (peekEl) { peekEl.remove(); peekEl = null; }
+}
+// Show a surviving line in its place in the target, a few lines either side.
+function peek(anchor, at) {
+  closePeek();
+  const ids = D.versions[at.v];
+  const [dir, base] = splitPath(at.path);
+  const el = document.createElement("div");
+  el.className = "peek";
+  el._for = anchor;
+  el.innerHTML = `<div class="ph"><span class="path mono">${esc(dir)}<b>${esc(base)}</b>:${at.k + 1}</span><span>in the target</span></div>`
+    + `<div class="rows"><div class="rows-inner"></div></div>`;
+  const inner = el.querySelector(".rows-inner");
+  for (let k = Math.max(0, at.k - 4); k < Math.min(ids.length, at.k + 5); k++) {
+    const row = document.createElement("div");
+    row.className = "row ctx" + (k === at.k ? " hit" : "");
+    row.innerHTML = `<span class="no">${k + 1}</span><span class="sg"></span><span class="cd">${lineHtml(ids[k]) || " "}</span>`;
+    inner.appendChild(row);
+  }
+  document.body.appendChild(el);
+  const r = anchor.getBoundingClientRect(), s = stage.getBoundingClientRect(), h = el.offsetHeight;
+  const top = r.bottom + 6 + h <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - h);
+  el.style.top = top + "px";
+  el.style.left = Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, s.left + 20)) + "px";
+  peekEl = el;
+}
+stage.addEventListener("click", (e) => {
+  const el = e.target.closest(".no, .ft") && e.target.closest(".row");
+  const f = el && el._r && el._r.fate;
+  if (!f || !getSelection().isCollapsed) return;
+  if (f.peek) {
+    if (peekEl && peekEl._for === el) closePeek(); else peek(el, f.peek);
+  } else if (f.jump != null) {
+    state.focus = el.dataset.key;
+    goto(f.jump);
+  } else return;
+  e.stopPropagation();
+});
+document.addEventListener("click", (e) => { if (peekEl && !peekEl.contains(e.target)) closePeek(); });
+stage.addEventListener("scroll", closePeek, { passive: true });
 
 // ---------- Start ----------
 
