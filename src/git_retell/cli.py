@@ -28,6 +28,10 @@ def cli():
     The first tree is EXACTLY B and the last must be EXACTLY H. Intermediate
     code need not follow the original development history or pass every check.
 
+    A partial retelling (start --partial) may leave some changed files out: each
+    file either reaches its exact target version or stays exactly as in B. Omit
+    --base to build from an empty tree instead of B.
+
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
     budget. Finish validates and removes the authoring worktree; resume checks
@@ -55,7 +59,9 @@ def cli():
 @cli.command()
 @click.argument("name")
 @click.option(
-    "--base", required=True, help="Real before commit/revision, pinned at creation."
+    "--base",
+    help="Real before commit/revision, pinned at creation. "
+    "Omit to build the files from scratch, starting with an empty tree.",
 )
 @click.option(
     "--target", required=True, help="Real after commit/revision, pinned at creation."
@@ -80,7 +86,20 @@ def cli():
     type=click.IntRange(min=0),
     help="Save this many context lines per diff hunk for the retelling.",
 )
-def start(name: str, base: str, target: str, worktree: Path, budget: int, context: int):
+@click.option(
+    "--partial",
+    is_flag=True,
+    help="Allow leaving some changed files out of the retelling.",
+)
+def start(
+    name: str,
+    base: str | None,
+    target: str,
+    worktree: Path,
+    budget: int,
+    context: int,
+    partial: bool,
+):
     """Pin endpoints and create branch retell/NAME at B in a separate worktree.
 
     Revisions must be commits; uncommitted files are not included. Use ordinary
@@ -90,21 +109,34 @@ def start(name: str, base: str, target: str, worktree: Path, budget: int, contex
     rejected; names start with a-z and contain only lowercase letters, digits,
     and hyphens. Both revisions are pinned even if their branches later move.
 
+    Without --base, B is a new parentless commit of the empty tree, so the
+    retelling builds every file from nothing. This pairs well with --partial.
+
+    With --partial, the retelling may leave out some of the files that differ
+    between B and H, such as lock files, generated code, or tests. It is all or
+    nothing per file: every file the history changes must end at exactly its
+    target version, and every other file must remain exactly as in B. Choose
+    which files to leave out; viewers list them as not retold.
+
     \b
     Examples:
       git-retell start demo --base main --target feature --worktree /tmp/demo
       git-retell start compact --base HEAD~1 --target HEAD --worktree /tmp/compact --budget 40 --context 0
+      git-retell start core --base main --target feature --worktree /tmp/core --partial
+      git-retell start fresh --target HEAD --worktree /tmp/fresh --partial
 
     In the new worktree, edit files and commit explanatory steps until the tree
     matches the target. Use Git amend/rebase to revise steps and validate to
     inspect progress. No commits are synthesized automatically.
     """
     retelling = start_retelling(
-        root(), name, base, target, worktree.resolve(), budget, context
+        root(), name, base, target, worktree.resolve(), budget, context, partial
     )
+    scratch = " (empty tree; building from scratch)" if base is None else ""
     click.echo(
         f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
-        f"Base: {retelling.base}\nTarget: {retelling.target}\nBudget: {budget} diff lines · context {context}\n"
+        f"Base: {retelling.base}{scratch}\nTarget: {retelling.target}\n"
+        f"Budget: {budget} diff lines · context {context}{' · partial' if partial else ''}\n"
         f"Next: create explanatory commits, then git-retell finish {name}"
     )
 
@@ -145,8 +177,11 @@ def report_output(report: dict, as_json: bool) -> None:
         if expansion is not None
         else "undefined (zero baseline or binary edits)"
     )
+    kind = " (partial)" if report["partial"] else ""
+    if report["from_scratch"]:
+        kind += " (from scratch)"
     click.echo(
-        f"SYNTHETIC {report['name']}: {'VALID' if report['valid'] else 'INVALID / UNFINISHED'}\n"
+        f"SYNTHETIC {report['name']}{kind}: {'VALID' if report['valid'] else 'INVALID / UNFINISHED'}\n"
         f"{report['step_count']} steps · budget {report['budget']} · context {report['context']} · expansion {factor}\n"
         f"Churn: real {report['real_churn']}, synthetic {report['synthetic_churn']}\n"
         f"Presentation: {report['total_presentation_lines']} total diff lines"
@@ -155,6 +190,15 @@ def report_output(report: dict, as_json: bool) -> None:
         click.echo(
             f"{step['step']:>3} {step['commit'][:8]} {step['presentation_lines']:>4} lines  {step['subject']}"
         )
+    if omitted := report["omitted_files"]:
+        click.echo(f"Not retold ({len(omitted)} files left as in the base):")
+        for item in omitted:
+            counts = (
+                "binary"
+                if item["binary_files"]
+                else f"+{item['added']} -{item['deleted']}"
+            )
+            click.echo(f"    {item['path']}  {counts}")
     for issue in report["issues"]:
         click.echo(f"! {issue}")
 
@@ -180,7 +224,8 @@ def report_output(report: dict, as_json: bool) -> None:
 def validate(name: str, budget: int | None, as_json: bool, context: int | None):
     """Validate linear ancestry, exact endpoint trees, and every rendered diff.
 
-    Exit 1 means unfinished/invalid. Churn is additions + deletions with rename
+    Exit 1 means unfinished/invalid. A partial retelling also lists the files
+    it leaves out; real churn and expansion then cover only retold files. Churn is additions + deletions with rename
     detection disabled. Expansion is cumulative churn / real churn; undefined
     for a zero denominator or binary edits. Binary patches count toward budget.
     Only committed state is reviewed; worktree edits are not part of the retelling.
@@ -375,8 +420,13 @@ def check(name: str, timeout: float, command: tuple[str, ...]):
 @click.option(
     "--context", type=click.IntRange(min=0), help="Save new context lines per hunk."
 )
-def configure(name: str, budget: int | None, context: int | None):
-    """Print or change a retelling's saved budget and context.
+@click.option(
+    "--partial/--no-partial",
+    default=None,
+    help="Allow or forbid leaving changed files out of the retelling.",
+)
+def configure(name: str, budget: int | None, context: int | None, partial: bool | None):
+    """Print or change a retelling's saved budget, context, and partial setting.
 
     Settings are stored as a JSON blob at refs/retell/NAME/settings, so they
     travel with the retelling's other refs. With no options, prints them.
@@ -385,16 +435,20 @@ def configure(name: str, budget: int | None, context: int | None):
     Examples:
       git-retell configure demo
       git-retell configure demo --budget 80 --context 6
+      git-retell configure demo --partial
     """
     repo = root()
     Retelling.load(repo, name)
-    changes = {"budget": budget, "context": context}
+    changes = {"budget": budget, "context": context, "partial": partial}
     saved = save_settings(
         repo,
         name,
         **{key: value for key, value in changes.items() if value is not None},
     )
-    click.echo(f"{name}: budget {saved['budget']} · context {saved['context']}")
+    click.echo(
+        f"{name}: budget {saved['budget']} · context {saved['context']}"
+        f" · {'partial' if saved['partial'] else 'complete'}"
+    )
 
 
 @cli.command(name="list")
@@ -431,6 +485,7 @@ def list_retellings(as_json: bool):
                 tip=retelling.tip,
                 budget=retelling.budget,
                 context=retelling.context,
+                partial=retelling.partial,
                 step_count=len(retelling.commits()),
             )
         except (click.ClickException, ValueError) as error:
@@ -446,7 +501,8 @@ def list_retellings(as_json: bool):
                 click.echo(f"{entry['name']}: incomplete — {entry['error']}")
                 continue
             click.echo(
-                f"{entry['name']}: {entry['step_count']} steps · budget {entry['budget']} · context {entry['context']}\n"
+                f"{entry['name']}: {entry['step_count']} steps · budget {entry['budget']} · context {entry['context']}"
+                f"{' · partial' if entry['partial'] else ''}\n"
                 f"  {entry['base'][:8]} → {entry['target'][:8]} · tip {entry['tip'][:8]}"
             )
             for path in entry["worktrees"]:

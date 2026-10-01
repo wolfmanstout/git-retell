@@ -250,11 +250,17 @@ def test_configure_updates_settings_blob(repo, tmp_path):
     result = runner.invoke(cli, ["configure", "demo", "--context", "6"])
     assert result.exit_code == 0 and "budget 60 · context 6" in result.output
     stored = git(repo, "cat-file", "blob", "refs/retell/demo/settings")
-    assert json.loads(stored) == {"budget": 60, "context": 6}
+    assert json.loads(stored) == {"budget": 60, "context": 6, "partial": False}
     assert "retell." not in git(repo, "config", "--local", "--list")
     assert runner.invoke(cli, ["configure", "demo", "--budget", "0"]).exit_code == 2
     assert runner.invoke(cli, ["configure", "missing"]).exit_code == 1
-    for text in ("[]", "not json", '{"budget": "60"}', '{"context": -1}'):
+    for text in (
+        "[]",
+        "not json",
+        '{"budget": "60"}',
+        '{"context": -1}',
+        '{"partial": 1}',
+    ):
         blob = git(repo, "hash-object", "-w", "--stdin", input_text=text).strip()
         git(repo, "update-ref", "refs/retell/demo/settings", blob)
         result = runner.invoke(cli, ["validate", "demo"])
@@ -268,3 +274,27 @@ def test_help_has_examples_for_every_command():
         assert result.exit_code == 0
         assert "Examples:" in result.output
         assert f"git-retell {name}" in result.output
+
+
+def test_start_partial_from_scratch_and_configure(repo, tmp_path):
+    (repo / "code.txt").write_text("after\n")
+    (repo / "uv.lock").write_text("generated\n")
+    commit(repo, "Real change")
+    runner = CliRunner()
+    path = tmp_path / "fresh"
+    result = runner.invoke(
+        cli,
+        ["start", "fresh", "--target", "HEAD", "--worktree", str(path), "--partial"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "from scratch" in result.output and "partial" in result.output
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Write the code")
+    result = runner.invoke(cli, ["validate", "fresh"])
+    assert result.exit_code == 0, result.output
+    assert "(partial) (from scratch): VALID" in result.output
+    assert "Not retold (1 files" in result.output and "uv.lock" in result.output
+    result = runner.invoke(cli, ["configure", "fresh", "--no-partial"])
+    assert "complete" in result.output
+    result = runner.invoke(cli, ["validate", "fresh", "--json"])
+    assert result.exit_code == 1 and not json.loads(result.output)["partial"]

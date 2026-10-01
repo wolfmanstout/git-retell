@@ -30,7 +30,8 @@ def slide(
     context = retelling.context if context is None else context
     commit = commits[index]
     previous = retelling.base if index == 0 else commits[index - 1]
-    heading = f"SYNTHETIC explanatory retelling · {retelling.name} · {index + 1}/{len(commits)} · {commit[:8]}"
+    kind = "partial retelling" if retelling.partial else "retelling"
+    heading = f"SYNTHETIC explanatory {kind} · {retelling.name} · {index + 1}/{len(commits)} · {commit[:8]}"
     message = safe_text(retelling.message(commit))
     patch = safe_text(diff(retelling.repo, previous, commit, context=context))
     return f"{heading}\n\n{message}\n\n{patch}"

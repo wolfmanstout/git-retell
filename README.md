@@ -80,12 +80,35 @@ git-retell list
 Installing the CLI makes `git-retell` available while working in any repository.
 All commands explain their options with `--help`.
 
+## Partial retellings and building from scratch
+
+`start --partial` lets a retelling leave out some of the files that differ
+between B and H, such as lock files, generated code, or tests. Each file is
+all or nothing: a file the history changes must end at exactly its target
+version, and every other file must stay exactly as in B. There is no list of
+excluded files to maintain; the omitted files are whatever still differs from
+the target, so which files to leave out is up to the author (or the agent's
+prompt). `configure NAME --partial` or `--no-partial` changes the setting later.
+
+Omit `--base` to build the files from nothing. `start` then anchors the
+retelling at a new parentless commit of the empty tree, stored at the usual
+base ref. This pairs well with `--partial`: retell a few core files from
+scratch and leave the rest of the repository out.
+
+```sh
+git-retell start core --base main --target feature --worktree /tmp/core --partial
+git-retell start fresh --target HEAD --worktree /tmp/fresh --partial
+```
+
 ## What is validated?
 
 - The branch is anchored at the exact pinned base commit, hence its exact tree.
 - Every subsequent commit has exactly one parent: the preceding step.
 - The final tree ID equals the pinned target tree ID. File contents, names,
   modes, symlinks, and submodule pointers all participate in tree identity.
+  For a partial retelling, no path may differ both between the base and the
+  final tree and between the final tree and the target: every file is either
+  retold exactly or left exactly as in the base.
 - Each complete rendered diff has at most the configured number of lines.
 
 `validate` exits 0 only when all four hold; it exits 1 for an unfinished or invalid
@@ -105,11 +128,13 @@ Git attributes can still influence hunk headers and text/binary classification.
 ## Metrics and the review frame
 
 Churn means additions + deletions, using Git numstat without rename detection.
-Expansion is cumulative synthetic churn divided by real B→H churn. It is
+Expansion is cumulative synthetic churn divided by real B→H churn (for a
+partial retelling, real churn of the retold files only). It is
 informational: 2× may be a better explanation than 1×. The ratio is undefined
 for zero real churn or any binary edits; text churn remains available. Mode-only
 changes still consume presentation lines even when their line churn is zero.
 Reports include each step's hash, subject, churn and diff lines, plus totals.
+A partial retelling's report also lists each omitted file with its real churn.
 
 The budget covers the diff at the selected context setting. Messages, navigation,
 wrapping, and extra context can require more terminal space. The viewer pages
@@ -176,6 +201,10 @@ drawn lighter and away from the axis. A fixed row marks every
 step that introduces (◆) or deletes (◇) files, and file names label them where
 space allows; hover for a step's subject and files, and click or drag to jump.
 Code is syntax highlighted with Pygments.
+
+A partial retelling shows a Partial tag in the header; click it or the sidebar's
+"not in this retelling" section to list the files left as in the base, with
+their real line counts. A retelling built from scratch is tagged as well.
 
 Web viewer controls: right/left arrow, `n`/`p`, or space: next and previous step.
 Home/End: first/last step. `j`/`k`: scroll. `+`/`-`: context, `0`: reset, `f`:
@@ -253,6 +282,9 @@ stubs when needed to fit usage and definition together, then refine them.
 Make each step substantial and coherent, with a commit message explaining its
 purpose and temporary limitations. Treat these as preferences, not rigid rules.
 
+<Optional, with start --partial: Leave out lock files and other generated
+files; retell every other changed file completely.>
+
 Preserve existing retellings. Reach the exact target tree, run git-retell
 finish, and report the view command, expansion, and any check results or
 limitations.
@@ -274,9 +306,10 @@ Git LFS content are not automatically fetched. No checks run unless requested.
 For retelling `demo`, the only stored state is:
 
 - `refs/heads/retell/demo`: the ordinary synthetic commit chain.
-- `refs/retell/demo/base` and `refs/retell/demo/target`: pinned real commits.
-- `refs/retell/demo/settings`: a JSON blob holding the default line `budget`
-  and `context` lines per hunk.
+- `refs/retell/demo/base` and `refs/retell/demo/target`: pinned real commits
+  (or, when building from scratch, a synthetic empty base commit).
+- `refs/retell/demo/settings`: a JSON blob holding the default line `budget`,
+  `context` lines per hunk, and whether the retelling is `partial`.
 
 Branch movement cannot silently move the pinned endpoints. There is no tutorial
 format, sidecar file, or Git config entry. Commit messages should identify the

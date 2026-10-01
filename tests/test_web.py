@@ -5,7 +5,8 @@ from click.testing import CliRunner
 
 from git_retell import web
 from git_retell.cli import cli
-from git_retell.git import git
+from git_retell.git import git, resolve
+from git_retell.retelling import start
 
 from .helpers import commit, example, refresh
 
@@ -137,3 +138,19 @@ def test_lifetimes_separate_scaffolding_from_lines_that_reach_the_target(
     ids = data["versions"][data["targetVersions"]["code.txt"]]
     assert [text[i] for i in ids] == final.splitlines()
     assert all(data["ends"][i] == -1 for i in ids)
+
+
+def test_partial_payload_lists_omitted_files(repo, tmp_path):
+    (repo / "code.txt").write_text("after\n")
+    (repo / "uv.lock").write_text("generated\n" * 3)
+    head = commit(repo, "Real change")
+    path = tmp_path / "author"
+    retelling = start(repo, "part", None, head, path, 60, partial=True)
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Only the code")
+    data = web.payload(refresh(retelling))
+    assert data["partial"] and data["fromScratch"] and data["valid"]
+    assert data["omitted"] == [
+        {"path": "uv.lock", "added": 3, "deleted": 0, "binary": False}
+    ]
+    assert resolve(repo, retelling.base, "tree") != resolve(repo, head, "tree")

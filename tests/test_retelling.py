@@ -124,3 +124,86 @@ def test_worktree_paths_with_newlines(repo, tmp_path):
     assert worktrees(repo, "odd")[0]["worktree"] == str(path)
     delete(repo, "odd")
     assert not path.exists()
+
+
+def partial_example(repo, tmp_path, *, partial=True, scratch=False):
+    """A real change to code.txt plus a lock file and a test, with a new lock dir."""
+    before = resolve(repo, "HEAD")
+    (repo / "code.txt").write_text("after\n")
+    (repo / "uv.lock").write_text("generated\n" * 50)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_code.py").write_text("assert True\n")
+    head = commit(repo, "Real change")
+    path = tmp_path / "author"
+    retelling = start(
+        repo,
+        "part",
+        None if scratch else before,
+        head,
+        path,
+        60,
+        partial=partial,
+    )
+    return retelling, path
+
+
+def test_partial_retelling_omits_whole_files(repo, tmp_path):
+    retelling, path = partial_example(repo, tmp_path)
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Only the code")
+    report = inspect(refresh(retelling))
+    assert report["valid"] and report["partial"]
+    assert [f["path"] for f in report["omitted_files"]] == [
+        "tests/test_code.py",
+        "uv.lock",
+    ]
+    assert report["omitted_files"][1]["added"] == 50
+    # Expansion compares against the retold files only.
+    assert report["real_churn"] == 2 and report["expansion_factor"] == 1
+    assert "uv.lock" not in diff(repo, retelling.base, retelling.target, paths=[])
+
+
+def test_partial_files_must_reach_target_or_stay_at_base(repo, tmp_path):
+    retelling, path = partial_example(repo, tmp_path)
+    (path / "code.txt").write_text("halfway\n")
+    commit(path, "Not the target version")
+    report = inspect(refresh(retelling))
+    assert not report["valid"] and "code.txt" in report["issues"][0]
+    assert "code.txt" not in [f["path"] for f in report["omitted_files"]]
+    # A file the real change leaves alone cannot be changed either.
+    (path / "code.txt").write_text("after\n")
+    (path / "extra").write_text("not in the target\n")
+    commit(path, "Extra file")
+    assert "extra" in inspect(refresh(retelling))["issues"][0]
+    # Touching an omitted file is fine as long as it ends as in the base.
+    (path / "extra").unlink()
+    (path / "uv.lock").write_text("temporary\n")
+    commit(path, "Temporary lock")
+    (path / "uv.lock").unlink()
+    commit(path, "Drop it again")
+    assert inspect(refresh(retelling))["valid"]
+
+
+def test_complete_retelling_rejects_omissions(repo, tmp_path):
+    retelling, path = partial_example(repo, tmp_path, partial=False)
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Only the code")
+    report = inspect(refresh(retelling))
+    assert not report["valid"] and report["omitted_files"] == []
+    assert "unfinished" in report["issues"][0]
+
+
+def test_from_scratch_starts_at_an_empty_root(repo, tmp_path):
+    retelling, path = partial_example(repo, tmp_path, scratch=True)
+    assert git(repo, "ls-tree", retelling.base).strip() == ""
+    assert git(repo, "show", "-s", "--format=%P", retelling.base).strip() == ""
+    assert not list(path.iterdir()) or [p.name for p in path.iterdir()] == [".git"]
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Write the code from nothing")
+    report = inspect(refresh(retelling))
+    assert report["valid"] and report["from_scratch"]
+    assert [f["path"] for f in report["omitted_files"]] == [
+        "tests/test_code.py",
+        "uv.lock",
+    ]
+    assert report["real_churn"] == 1

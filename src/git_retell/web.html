@@ -143,6 +143,15 @@ h1.subject { font-size: 21px; line-height: 1.3; letter-spacing: -.015em; font-we
 .fname { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; direction: rtl; text-align: left; }
 .fname b { color: var(--text); font-weight: 560; }
 .counts { font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Files a partial retelling leaves as in the base */
+.omitted { margin-top: 22px; font-size: 12px; color: var(--muted); }
+.omitted summary { cursor: pointer; padding: 4px 0; }
+.omitted summary:hover { color: var(--text); }
+.omitted p { margin: 6px 0 8px; }
+.omitted .filelist li { cursor: default; opacity: .75; }
+.omitted .filelist .a, .omitted .filelist .d { color: var(--muted); }
+button.tag { background: transparent; cursor: pointer; font-family: inherit; }
+button.tag:hover { color: var(--text); }
 .counts .a { color: var(--add); } .counts .d { color: var(--del); margin-left: 6px; }
 .badge {
   font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
@@ -347,6 +356,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   <div class="brand">git-retell <span id="name"></span></div>
   <span class="tag">Synthetic</span>
   <span class="tag" id="status"></span>
+  <span class="tag" id="scratch" hidden title="Starts from an empty tree, not a real base commit">From scratch</span>
+  <button class="tag" id="partial" hidden>Partial</button>
   <div class="spacer"></div>
   <div class="controls">
     <button class="btn" id="less" title="Less context (-)">−</button>
@@ -407,7 +418,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const ROW_H = 21;
 
-const state = { step: 0, ctx: D.context, full: false, focus: null };
+const state = { step: 0, ctx: D.context, full: false, focus: null, omittedOpen: false };
 let shown = null;      // model currently displayed (or being animated to)
 let gen = 0;           // transition generation; stale continuations bail out
 let running = [];      // animations of the transition in flight
@@ -744,6 +755,7 @@ function renderStory(dir) {
       <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>
     <div class="fates">${fatesHtml(STATS[state.step])}</div>
     <ul class="filelist">${files}</ul>
+    ${omittedHtml()}
   </div>`;
   const old = story.querySelector(".story-inner");
   const oldFill = old && old.querySelector(".fill");
@@ -756,7 +768,9 @@ function renderStory(dir) {
     fill.style.width = oldFill.style.width;
     requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.transition = ""; fill.style.width = pct + "%"; }));
   }
-  inner.querySelectorAll(".filelist li").forEach((li) => li.addEventListener("click", () => {
+  const omitted = inner.querySelector(".omitted");
+  if (omitted) omitted.addEventListener("toggle", () => { state.omittedOpen = omitted.open; });
+  inner.querySelectorAll(".filelist li[data-k]").forEach((li) => li.addEventListener("click", () => {
     const el = stage.children[+li.dataset.k];
     if (el) stage.scrollTo({ top: el.offsetTop - 16, behavior: "smooth" });
   }));
@@ -765,6 +779,20 @@ function renderStory(dir) {
       [{ opacity: 0, transform: `translateY(${dir * 14}px)` }, { opacity: 1, transform: "none" }],
       { duration: 420, easing: EASE, delay: 120, fill: "backwards" }));
   }
+}
+// A partial retelling leaves these files exactly as in the base, at every step.
+function omittedHtml() {
+  if (!D.omitted.length) return "";
+  const items = D.omitted.map((f) => {
+    const [dir, base] = splitPath(f.path);
+    const counts = f.binary ? "binary" : `<span class="a">+${f.added}</span><span class="d">−${f.deleted}</span>`;
+    return `<li><span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span><span class="counts">${counts}</span></li>`;
+  }).join("");
+  return `<details class="omitted"${state.omittedOpen ? " open" : ""}>
+    <summary>${plural(D.omitted.length, "file")} not in this retelling</summary>
+    <p>This partial retelling leaves ${D.omitted.length === 1 ? "this file" : "these files"} as in the base; the real change also modifies ${D.omitted.length === 1 ? "it" : "them"}.</p>
+    <ul class="filelist">${items}</ul>
+  </details>`;
 }
 // Hard-wrapped prose reflows; a bullet's indented continuation lines join it.
 function renderParagraph(p) {
@@ -1189,6 +1217,19 @@ $("name").textContent = D.name;
 $("status").textContent = D.valid ? "Valid" : "Invalid";
 $("status").className = "tag " + (D.valid ? "valid" : "invalid");
 $("status").title = D.valid ? `Every step fits ${D.budget} lines at U${D.context}` : D.issues.join("\n");
+$("scratch").hidden = !D.fromScratch;
+if (D.partial) {
+  const n = D.omitted.length;
+  $("partial").hidden = false;
+  $("partial").textContent = n ? `Partial · ${n} not retold` : "Partial";
+  $("partial").title = n ? "Show the files this retelling leaves out" : "Allowed to leave files out, but retells every change";
+  $("partial").onclick = () => {
+    const details = story.querySelector(".omitted");
+    if (!details) return;
+    details.open = state.omittedOpen = true;
+    details.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+}
 const fromHash = parseInt(location.hash.slice(1), 10);
 if (fromHash >= 1 && fromHash <= D.slides.length) state.step = fromHash - 1;
 buildTimeline();

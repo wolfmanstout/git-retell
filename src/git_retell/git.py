@@ -29,8 +29,17 @@ def resolve(repo: Path, revision: str, kind: str = "commit") -> str:
 
 
 def diff(
-    repo: Path, before: str, after: str, *, numstat: bool = False, context: int = 3
+    repo: Path,
+    before: str,
+    after: str,
+    *,
+    numstat: bool = False,
+    context: int = 3,
+    paths: list[str] | None = None,
 ) -> str:
+    """Render BEFORE..AFTER, limited to the literal PATHS when given (even empty)."""
+    if paths is not None and not paths:
+        return ""
     options = (
         ["--no-patch", "--numstat", "-z"]
         if numstat
@@ -60,6 +69,7 @@ def diff(
         before,
         after,
         "--",
+        *(f":(literal){path}" for path in paths or []),
     )
 
 
@@ -68,9 +78,20 @@ def line_count(text: str) -> int:
     return text.count("\n") + int(bool(text) and not text.endswith("\n"))
 
 
-def churn(repo: Path, before: str, after: str) -> dict:
+def changed_paths(repo: Path, before: str, after: str) -> set[str]:
+    """Every file path whose entry differs, without rename detection."""
+    output = git(repo, "diff", "--name-only", "-z", "--no-renames", before, after, "--")
+    return {path for path in output.split("\0") if path}
+
+
+def empty_tree(repo: Path) -> str:
+    """The empty tree's ID in this repository's object format."""
+    return git(repo, "hash-object", "-t", "tree", "--stdin", input_text="").strip()
+
+
+def churn(repo: Path, before: str, after: str, paths: list[str] | None = None) -> dict:
     added = deleted = binary = 0
-    for entry in diff(repo, before, after, numstat=True).split("\0"):
+    for entry in diff(repo, before, after, numstat=True, paths=paths).split("\0"):
         if not entry:
             continue
         plus, minus, _ = entry.split("\t", 2)

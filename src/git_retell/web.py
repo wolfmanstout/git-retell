@@ -365,6 +365,17 @@ def payload(retelling: Retelling, context: int | None = None) -> dict:
         "budget": retelling.budget,
         "context": context,
         "expansion": report["expansion_factor"],
+        "partial": report["partial"],
+        "fromScratch": report["from_scratch"],
+        "omitted": [
+            {
+                "path": item["path"],
+                "added": item["added"],
+                "deleted": item["deleted"],
+                "binary": bool(item["binary_files"]),
+            }
+            for item in report["omitted_files"]
+        ],
         "slides": slides,
         "versions": builder.versions,
         "text": builder.text,

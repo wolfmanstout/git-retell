@@ -8,7 +8,7 @@ from pathlib import Path
 
 import click
 
-from .git import churn, diff, git, line_count, resolve
+from .git import changed_paths, churn, diff, empty_tree, git, line_count, resolve
 
 
 def validate_name(name: str) -> str:
@@ -28,6 +28,7 @@ class Retelling:
     tip: str
     budget: int
     context: int = 3
+    partial: bool = False
 
     @classmethod
     def load(cls, repo: Path, name: str) -> "Retelling":
@@ -46,6 +47,7 @@ class Retelling:
             resolve(repo, f"refs/heads/retell/{name}"),
             saved["budget"],
             saved["context"],
+            saved["partial"],
         )
 
     def commits(self) -> list[str]:
@@ -64,22 +66,44 @@ class Retelling:
 def start(
     repo: Path,
     name: str,
-    base: str,
+    base: str | None,
     target: str,
     path: Path,
     budget: int,
     context: int = 3,
+    partial: bool = False,
 ) -> Retelling:
+    """Pin endpoints; without a BASE, anchor at an empty root commit instead."""
     validate_name(name)
-    before, after = resolve(repo, base), resolve(repo, target)
+    after = resolve(repo, target)
     prefix = f"refs/retell/{name}"
     if git(repo, "for-each-ref", "--format=%(refname)", prefix).strip():
         raise click.ClickException(f"Retelling {name!r} already exists.")
+    before = resolve(repo, base) if base is not None else empty_root(repo, name)
     git(repo, "worktree", "add", "-b", f"retell/{name}", str(path), before)
     git(repo, "update-ref", f"{prefix}/base", before)
     git(repo, "update-ref", f"{prefix}/target", after)
-    save_settings(repo, name, budget=budget, context=context)
+    save_settings(repo, name, budget=budget, context=context, partial=partial)
     return Retelling.load(repo, name)
+
+
+def empty_root(repo: Path, name: str) -> str:
+    """A parentless commit of the empty tree, so a retelling can build from scratch.
+
+    A fixed identity keeps it working without user.name and marks it as synthetic.
+    """
+    tree = git(repo, "mktree", input_text="").strip()
+    return git(
+        repo,
+        "-c",
+        "user.name=git-retell",
+        "-c",
+        "user.email=git-retell@invalid",
+        "commit-tree",
+        tree,
+        "-m",
+        f"SYNTHETIC empty base for retelling {name}",
+    ).strip()
 
 
 def inspect(
@@ -123,16 +147,37 @@ def finish_report(
     previous: str,
     context: int,
 ) -> dict:
-    base_tree = resolve(retelling.repo, retelling.base, "tree")
-    target_tree = resolve(retelling.repo, retelling.target, "tree")
-    tip_tree = resolve(retelling.repo, retelling.tip, "tree")
-    if previous != retelling.tip:
+    repo, base, target, tip = (
+        retelling.repo,
+        retelling.base,
+        retelling.target,
+        retelling.tip,
+    )
+    base_tree = resolve(repo, base, "tree")
+    target_tree = resolve(repo, target, "tree")
+    tip_tree = resolve(repo, tip, "tree")
+    if previous != tip:
         issues.append("The synthetic branch does not begin at the pinned base commit.")
-    if tip_tree != target_tree:
+    # Real churn and size cover only the retold paths: all of them unless partial.
+    retold = None
+    omitted: list[dict] = []
+    if tip_tree != target_tree and not retelling.partial:
         issues.append(
             "Final tree differs from the pinned target tree; retelling is unfinished."
         )
-    real = churn(retelling.repo, retelling.base, retelling.target)
+    elif tip_tree != target_tree:
+        remaining = changed_paths(repo, tip, target)
+        if stray := sorted(remaining & changed_paths(repo, base, tip)):
+            issues.append(
+                "Partial retelling changes these files without reaching their "
+                f"target versions: {', '.join(stray)}"
+            )
+        retold = sorted(changed_paths(repo, base, target) - remaining)
+        omitted = [
+            {"path": path, **churn(repo, base, target, [path])}
+            for path in sorted(remaining - set(stray))
+        ]
+    real = churn(repo, base, target, retold)
     real_size = real["added"] + real["deleted"]
     synthetic_size = sum(s["added"] + s["deleted"] for s in steps)
     has_binary = real["binary_files"] or any(s["binary_files"] for s in steps)
@@ -141,6 +186,8 @@ def finish_report(
         "name": retelling.name,
         "synthetic": True,
         "valid": not issues,
+        "partial": retelling.partial,
+        "from_scratch": base_tree == empty_tree(repo),
         "base": retelling.base,
         "target": retelling.target,
         "tip": retelling.tip,
@@ -154,13 +201,14 @@ def finish_report(
         "real_churn": real_size,
         "synthetic_churn": synthetic_size,
         "real_presentation_lines": line_count(
-            diff(retelling.repo, retelling.base, retelling.target, context=context)
+            diff(repo, base, target, context=context, paths=retold)
         ),
         "total_presentation_lines": sum(s["presentation_lines"] for s in steps),
         "expansion_factor": expansion,
         "expansion_note": "Undefined for zero real churn or binary changes."
         if expansion is None
         else None,
+        "omitted_files": omitted,
         "issues": issues,
     }
 
@@ -305,8 +353,12 @@ def delete(repo: Path, name: str) -> list[str]:
     return [tree["worktree"] for tree in attached]
 
 
-# Each saved setting's default and smallest allowed value.
-DEFAULTS = {"budget": (60, 1), "context": (3, 0)}
+# Each saved setting's default and smallest allowed value (None for booleans).
+DEFAULTS: dict[str, tuple[int | bool, int | None]] = {
+    "budget": (60, 1),
+    "context": (3, 0),
+    "partial": (False, None),
+}
 
 
 def settings(repo: Path, name: str) -> dict:
@@ -323,7 +375,12 @@ def settings(repo: Path, name: str) -> dict:
     result = {}
     for key, (default, minimum) in DEFAULTS.items():
         value = saved.get(key, default)
-        if type(value) is not int or value < minimum:
+        if minimum is None:
+            if type(value) is not bool:
+                raise click.ClickException(
+                    f"Invalid {key} in {ref}: expected true or false, got {value!r}."
+                )
+        elif type(value) is not int or value < minimum:
             raise click.ClickException(
                 f"Invalid {key} in {ref}: expected an integer >= {minimum}, got {value!r}."
             )
@@ -331,7 +388,7 @@ def settings(repo: Path, name: str) -> dict:
     return result
 
 
-def save_settings(repo: Path, name: str, **changes: int) -> dict:
+def save_settings(repo: Path, name: str, **changes: int | bool) -> dict:
     """Store the current settings updated with CHANGES as a new JSON blob."""
     saved = {**settings(repo, name), **changes}
     blob = git(
