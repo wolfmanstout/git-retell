@@ -419,8 +419,8 @@ def web(
     Transitions animate how each step connects to its neighbors: lines that
     leave collapse, surviving lines move and recolor, new lines expand, and
     files slide in or out. A seek bar charts each step's churn and marks where
-    each file first appears or is deleted; a file's last change is labeled as
-    its final edit. Code is syntax highlighted.
+    each file first appears. Each file header links to that file's previous
+    and next change and labels its final edit. Code is syntax highlighted.
 
     \b
     Keys: right/left or n/p: next/previous step. j/k: scroll.

@@ -161,6 +161,15 @@ button.tag:hover { color: var(--text); }
 .badge.gone { color: var(--del); background: var(--del-bg); }
 .badge.mode { color: var(--muted); background: var(--rule-soft); }
 .badge.final { color: var(--accent); background: var(--accent-soft); }
+.journey { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.journey.last, .journey.only { color: var(--accent); }
+.journey.only { padding: 0 4px; }
+.journey .jg {
+  border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1;
+  padding: 0 4px; border-radius: 4px;
+}
+.journey button.jg:hover { color: var(--accent); background: var(--accent-soft); }
+.journey .jg.off { opacity: .3; cursor: default; }
 
 /* Code stage */
 section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-behavior: auto; }
@@ -291,13 +300,11 @@ footer.seek {
 .flag {
   position: absolute; font-size: 10.5px; line-height: 14px; white-space: nowrap; color: var(--new); pointer-events: none;
 }
-.flag.gone { color: var(--del); }
 .marks { position: absolute; left: 0; right: 0; top: 27px; height: 9px; pointer-events: none; }
 .mark {
   position: absolute; top: 50%; width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
   transform: rotate(45deg); background: var(--new); border-radius: 1px;
 }
-.mark.gone { background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--del); }
 .track { position: absolute; left: 0; right: 0; top: 38px; height: 44px; }
 .track svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .track .axis { stroke: var(--rule); stroke-width: 1; }
@@ -307,7 +314,6 @@ footer.seek {
 .track .future { opacity: .32; transition: opacity .3s; }
 .track .empty { opacity: .1; }
 .track .stem { stroke: var(--new); stroke-width: 1; stroke-dasharray: 2 2; opacity: .55; }
-.track .stem.gone { stroke: var(--del); }
 .playhead {
   position: absolute; top: 34px; bottom: 18px; width: 2px; margin-left: -1px; background: var(--text);
   border-radius: 2px; transition: left .45s cubic-bezier(.3,.7,.2,1); pointer-events: none;
@@ -457,8 +463,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   <h3>Following a file</h3>
   <div class="legend">
     <div>◆ on the seek bar: the step where a file first appears</div>
-    <div>◇ on the seek bar: a step that deletes a file</div>
-    <div><span class="badge final">Final edit</span>&nbsp; no later step changes the file</div>
+    <div><span class="journey">‹ edit 2 of 4 ›</span>&nbsp; on a file: go to its previous or next change</div>
+    <div><span class="journey last">final edit</span>&nbsp; no later step changes the file</div>
   </div>
 </div></div>
 <script id="data" type="application/json">__DATA__</script>
@@ -548,13 +554,25 @@ function stepList(steps) {
   const n = steps.map((i) => i + 1);
   return n.length < 3 ? n.join(" and ") : n.slice(0, -1).join(", ") + " and " + n[n.length - 1];
 }
-// A badge for a file's last edit; deletions already say so.
-function finalBadge(f, i, short) {
+// A short badge for a file's last edit in the sidebar; deletions already say so.
+function finalBadge(f, i) {
   const steps = EDITS.get(f.path);
   if (f.status === "D" || steps[steps.length - 1] !== i) return "";
   const only = steps.length === 1;
   const title = only ? "The only step that changes this file" : `No later step changes this file; it changes in steps ${stepList(steps)}`;
-  return `<span class="badge final" title="${title}">${short ? (only ? "Only" : "Final") : (only ? "Only edit" : "Final edit")}</span>`;
+  return `<span class="badge final" title="${title}">${only ? "Only" : "Final"}</span>`;
+}
+// Where this step falls among the file's changes, with links to the neighbors.
+function journey(f, i) {
+  const steps = EDITS.get(f.path), k = steps.indexOf(i), n = steps.length;
+  if (n === 1) return `<span class="journey only" title="The only step that changes this file">only edit</span>`;
+  const last = k === n - 1;
+  const label = `${last && f.status !== "D" ? "final edit" : "edit"} ${k + 1} of ${n}`;
+  const link = (to, sign, word) => to == null ? `<span class="jg off">${sign}</span>`
+    : `<button class="jg" data-to="${to}" data-p="${esc(f.path)}" title="${word} change to this file: step ${to + 1}">${sign}</button>`;
+  return `<span class="journey${last ? " last" : ""}" title="This file changes in steps ${stepList(steps)}">`
+    + link(k > 0 ? steps[k - 1] : null, "‹", "Previous") + `<span>${label}</span>`
+    + link(last ? null : steps[k + 1], "›", "Next") + `</span>`;
 }
 function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
 function fatesHtml(st) {
@@ -761,7 +779,7 @@ function cardHead(card) {
   if (f.status === "A") badges += `<span class="badge new">New file</span>`;
   if (f.status === "D") badges += `<span class="badge gone">Deleted</span>`;
   if (f.oldMode !== f.newMode && f.status !== "A" && f.status !== "D") badges += `<span class="badge mode">${esc(f.oldMode)} → ${esc(f.newMode)}</span>`;
-  badges += finalBadge(f, card.step, false);
+  badges += journey(f, card.step);
   const counts = f.binary ? `<span class="counts">binary</span>`
     : `<span class="counts"><span class="a">+${f.added}</span><span class="d">−${f.deleted}</span></span>`;
   const only = focusedOn(f.path);
@@ -820,7 +838,7 @@ function renderStory(dir) {
   const files = s.files.map((f, k) => {
     const [dir, base] = splitPath(f.path);
     const badge = (f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "")
-      + finalBadge(f, state.step, true);
+      + finalBadge(f, state.step);
     const counts = f.binary ? "binary" : `<span class="a">+${f.added}</span><span class="d">−${f.deleted}</span>`;
     return `<li data-k="${k}"><span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span>${badge}<span class="counts">${counts}</span></li>`;
   }).join("");
@@ -923,6 +941,12 @@ function settle() {
 }
 
 function anchorOf(model) {
+  // A file key from following a file lands on that file's first change.
+  const card = state.focus && model.cards.find((c) => c.key === state.focus);
+  if (card) {
+    const r = card.rows.find((r) => r.kind === "add" || r.kind === "del") || card.rows[0];
+    state.focus = r ? r.key : null;
+  }
   if (state.focus && model.cards.some((c) => c.rows.some((r) => r.key === state.focus))) return state.focus;
   for (const c of model.cards) for (const r of c.rows) if (r.kind === "add" || r.kind === "del") return r.key;
   return null;
@@ -1100,9 +1124,9 @@ function buildTimeline() {
   let svg = `<svg viewBox="0 0 1000 ${H}" preserveAspectRatio="none"><line class="axis" x1="0" x2="1000" y1="${mid}" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
   D.slides.forEach((s, i) => {
     const cx = xOf(i) * 1000, [a, d] = churn[i];
-    const introduced = appearing(i).length > 0, removed = s.files.some((f) => f.status === "D");
+    const introduced = appearing(i).length > 0;
     svg += `<g data-s="${i}"${shownStep(i) ? "" : ` class="empty"`}>`;
-    if (introduced || removed) svg += `<line class="stem${introduced ? "" : " gone"}" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
+    if (introduced) svg += `<line class="stem" x1="${cx}" x2="${cx}" y1="0" y2="${mid}" vector-effect="non-scaling-stroke"/>`;
     // Lines that reach the target sit against the axis; temporary ones stack outside.
     const st = STATS[i], ha = scale(a), hd = scale(d);
     const hp = a ? ha * st.perm / a : 0, hr = d ? hd * st.real / d : 0;
@@ -1114,7 +1138,7 @@ function buildTimeline() {
   layoutFlags();
 }
 
-// Every step that adds or deletes files gets a marker in one fixed row, so a
+// Every step where a file first appears gets a marker in one fixed row, so a
 // crowded history never grows taller; name labels fill two rows where they fit.
 function layoutFlags() {
   const labels = $("labels"), marks = $("marks");
@@ -1125,35 +1149,33 @@ function layoutFlags() {
   marks.style.setProperty("--s", size + "px");
   const lanes = [[], []];
   const free = (lane, a, b) => lanes[lane].every(([c, d]) => b <= c || a >= d);
-  D.slides.forEach((s, i) => {
-    const added = appearing(i), gone = s.files.filter((f) => f.status === "D");
+  D.slides.forEach((_, i) => {
+    const list = appearing(i);
+    if (!list.length) return;
     const x = xOf(i) * width;
-    for (const [list, cls] of [[gone, "gone"], [added, ""]]) {
-      if (!list.length) continue;
-      const mark = document.createElement("div");
-      mark.className = "mark " + cls;
-      mark.style.left = x + "px";
-      marks.appendChild(mark);
-      const el = document.createElement("div");
-      el.className = "flag " + cls;
-      el.textContent = (cls ? "−" : "") + splitPath(list[0].path)[1] + (list.length > 1 ? ` +${list.length - 1}` : "");
-      labels.appendChild(el);
-      const w = el.offsetWidth;
-      // Prefer starting at the marker; near the right edge, end at it instead.
-      const spots = [[x - 3, x - 3 + w], [x + 3 - w, x + 3]].filter(([a, b]) => a >= 0 && b <= width);
-      let placed = false;
-      for (let lane = 0; lane < 2 && !placed; lane++) {
-        for (const [a, b] of spots) {
-          if (!free(lane, a - 6, b + 6)) continue;
-          lanes[lane].push([a, b]);
-          el.style.left = a + "px";
-          el.style.top = lane * 12 + "px";
-          placed = true;
-          break;
-        }
+    const mark = document.createElement("div");
+    mark.className = "mark";
+    mark.style.left = x + "px";
+    marks.appendChild(mark);
+    const el = document.createElement("div");
+    el.className = "flag";
+    el.textContent = splitPath(list[0].path)[1] + (list.length > 1 ? ` +${list.length - 1}` : "");
+    labels.appendChild(el);
+    const w = el.offsetWidth;
+    // Prefer starting at the marker; near the right edge, end at it instead.
+    const spots = [[x - 3, x - 3 + w], [x + 3 - w, x + 3]].filter(([a, b]) => a >= 0 && b <= width);
+    let placed = false;
+    for (let lane = 0; lane < 2 && !placed; lane++) {
+      for (const [a, b] of spots) {
+        if (!free(lane, a - 6, b + 6)) continue;
+        lanes[lane].push([a, b]);
+        el.style.left = a + "px";
+        el.style.top = lane * 12 + "px";
+        placed = true;
+        break;
       }
-      if (!placed) el.remove();
     }
+    if (!placed) el.remove();
   });
 }
 
@@ -1173,9 +1195,9 @@ function list(paths, cls, sign) {
 function showHover(i) {
   const s = D.slides[i], hv = $("hover");
   const added = appearing(i).map((f) => f.path + (f.status === "A" ? " (new)" : ""));
-  const gone = s.files.filter((f) => f.status === "D").map((f) => f.path);
+  const gone = s.files.filter((f) => f.status === "D").map((f) => f.path + " (deleted)");
   hv.innerHTML = `<div class="hs">Step ${i + 1} · ${s.lines} lines</div><div>${inline(s.subject.replace(/^synthetic:\s*/i, ""))}</div>`
-    + list(added, "hn", "◆") + list(gone, "hg", "◇")
+    + list(added, "hn", "◆") + list(gone, "hg", "−")
     + (STATS[i].temp || STATS[i].scaf ? `<div class="hf">${[
       STATS[i].temp && `${plural(STATS[i].temp, "temporary line")} added`,
       STATS[i].scaf && `${plural(STATS[i].scaf, "line")} cleaned up`].filter(Boolean).join(" · ")}</div>` : "");
@@ -1388,6 +1410,8 @@ $("flist").addEventListener("change", (e) => {
 });
 $("flist").addEventListener("click", (e) => { if (e.target.classList.contains("only")) only(e.target.dataset.p); });
 stage.addEventListener("click", (e) => {
+  const j = e.target.closest(".jg[data-to]");
+  if (j) { e.stopPropagation(); state.focus = "f:" + j.dataset.p; goto(+j.dataset.to); return; }
   const b = e.target.closest(".focus");
   if (b) { e.stopPropagation(); only(b.dataset.p); }
 });

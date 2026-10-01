@@ -199,12 +199,16 @@ identical text appears in the target.
 
 A seek bar charts each step's additions and deletions, with temporary lines
 drawn lighter and away from the axis. A fixed row marks the step where each
-file first appears in the retelling (◆), whether new or already in the base,
-and every step that deletes files (◇); file names label them where space
-allows. Hover for a step's subject and files, and click or drag to jump. A
-file's last change carries a "Final edit" badge ("Only edit" if one step
-changes it), whose tooltip lists every step that changes the file, so you can
-follow any file from its first appearance to its final version.
+file first appears in the retelling (◆), whether new or already in the base;
+file names label them where space allows. Hover for a step's subject and the
+files it introduces or deletes, and click or drag to jump.
+
+To follow one file, each file header shows where the step falls among that
+file's changes, such as `‹ edit 2 of 4 ›`; the arrows go to its previous and
+next change. Its last change reads "final edit" ("only edit" if one step
+changes it), and the sidebar marks it too. Together with ◆, this lets you read
+any file's journey from its first appearance to its final version in context,
+without filtering.
 Code is syntax highlighted with Pygments.
 
 A partial retelling shows a Partial tag in the header; click it or the sidebar's
