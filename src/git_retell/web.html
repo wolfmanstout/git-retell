@@ -187,7 +187,8 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
   transition: left .55s cubic-bezier(.3,.7,.2,1), width .55s cubic-bezier(.3,.7,.2,1);
 }
 .ruler .tick { position: absolute; top: 1px; bottom: 1px; width: 2px; border-radius: 1px; transition: left .55s cubic-bezier(.3,.7,.2,1), opacity .3s; }
-.ruler .tick.a { background: var(--add); } .ruler .tick.d { background: var(--del); }
+/* Additions sit in the top half and deletions in the bottom, so neither hides the other. */
+.ruler .tick.a { background: var(--add); bottom: 50%; } .ruler .tick.d { background: var(--del); top: 50%; }
 .rows { font-size: 12.5px; overflow-x: auto; overflow-y: hidden; padding: 6px 0; }
 .rows-inner { display: inline-block; min-width: 100%; }
 .row {

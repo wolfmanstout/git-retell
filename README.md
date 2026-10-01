@@ -176,7 +176,8 @@ viewer can animate the difference between any two slides:
   context lines the next step deletes fade to gray.
 - Moving to another part of the same file collapses the old hunk, glides the
   view, and expands the new hunk. Each file header has a small ruler showing
-  which part of the file is visible and where it changed.
+  which part of the file is visible and where it changed: additions are green
+  ticks along the top half, deletions red ticks along the bottom.
 - Files that leave the slide swipe away; files that join it slide in. New files
   are flagged with a highlighted header.
 - Like Git's hunk-header function context, a hidden stretch above a hunk names
