@@ -149,7 +149,7 @@ remain accessible, including wrapped lines. Context is a viewing preference;
 saved settings and code churn remain unchanged. The VALID/INVALID status is
 recomputed at the displayed context, so expanding context can exceed the budget.
 `show NAME --all` prints every slide for a pager or text export. Terminal controls
-are visibly escaped and tabs expanded. The MVP budgets lines, not reading time.
+are visibly escaped and tabs expanded.
 
 ## Web viewer
 
@@ -359,22 +359,6 @@ available and `resume` checks it out again. Use `git-retell delete NAME` to
 remove the retelling's refs and settings too. Retellings are not merged back
 into the real development branch.
 
-## Recursive dogfood
-
-The first experiment is `dogfood`, explaining this implementation from the
-original scaffold. In the development repository, try:
-
-```sh
-git-retell validate dogfood
-git-retell view dogfood
-```
-
-Its commits introduce simple versions before the final generalizations, then
-add validation, viewing, checks, CLI guidance, and regression tests. All temporary
-code must disappear by the pinned target. The history and endpoint refs are local
-Git artifacts, so a normal clone needs the bundle or an explicit fetch of these
-refs. The explanatory branch has no special dependency on an authoring script.
-
 ## Development
 
 To contribute to this tool, use uv. Run `uv sync --locked` to install the locked
@@ -396,6 +380,4 @@ so the tool remains available while the synthetic implementation is incomplete.
 
 Tests exercise real temporary repositories and worktrees, including exact trees,
 nonlinear histories, diff budgets, binary patches, unusual paths, check cleanup,
-and terminal navigation. The MVP deliberately has no AST renderer, sidecars,
-web server, automatic synthesis backend, or requirement that intermediate steps
-pass.
+and terminal navigation.
