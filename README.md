@@ -19,23 +19,20 @@ claim about how the code was originally developed.
 
 ## Installation
 
-Requires Python 3.11+ and Git with worktree support. The package is not yet
-published on PyPI. For now, install from a checkout of this repository:
+Install git-retell with [uv](https://docs.astral.sh/uv/):
 
-```sh
-uv tool install .
+```bash
+uv tool install git-retell
 ```
 
-You can also install from the checkout using `pip install .` in a virtual
-environment or `pipx install .`.
+You can also install it with `pipx` or `pip`:
 
-Once published on PyPI, install using `pip` or `pipx`:
-
-```sh
-pip install git-retell
-# Or install the CLI in an isolated environment:
+```bash
 pipx install git-retell
+pip install git-retell
 ```
+
+Requires Git.
 
 ## Usage
 
@@ -43,12 +40,6 @@ For help, run:
 
 ```sh
 git-retell --help
-```
-
-With the package installed in your Python environment, you can also use:
-
-```sh
-python -m git_retell --help
 ```
 
 ### Example workflow
@@ -392,12 +383,6 @@ virtual environment and run tests:
 
 ```sh
 uv run pytest
-```
-
-Run type checking with:
-
-```sh
-uv run basedpyright
 ```
 
 To run git-retell locally, use:
