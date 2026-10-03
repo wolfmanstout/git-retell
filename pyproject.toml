@@ -1,6 +1,6 @@
 [project]
 name = "git-retell"
-version = "0.1.0"
+version = "0.2.0"
 description = "Synthetic Git histories for code review"
 readme = "README.md"
 license = "Apache-2.0"
