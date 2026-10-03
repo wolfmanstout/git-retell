@@ -1,4 +1,4 @@
-"""Optional quality checks run on disposable, detached worktrees."""
+"""Optional per-step commands run on disposable, detached worktrees."""
 
 import os
 import signal
@@ -13,7 +13,7 @@ from .retelling import Retelling
 def check(retelling: Retelling, command: tuple[str, ...], timeout: float) -> list[dict]:
     results = []
     for number, commit in enumerate(retelling.commits(), 1):
-        with tempfile.TemporaryDirectory(prefix="git-retell-check-") as directory:
+        with tempfile.TemporaryDirectory(prefix="git-retell-test-") as directory:
             path = Path(directory) / "tree"
             git(retelling.repo, "worktree", "add", "--detach", str(path), commit)
             try:
@@ -51,7 +51,7 @@ def run_check(path: Path, command: tuple[str, ...], timeout: float) -> dict:
                 if isinstance(error, KeyboardInterrupt):
                     raise
                 timed_out = True
-                stderr += f"\nCheck exceeded {timeout:g} seconds."
+                stderr += f"\nCommand exceeded {timeout:g} seconds."
             return {
                 "returncode": process.returncode,
                 "passed": process.returncode == 0,

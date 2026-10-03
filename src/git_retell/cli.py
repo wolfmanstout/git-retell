@@ -29,20 +29,20 @@ def cli():
     code need not follow the original development history or pass every check.
 
     A partial retelling (start --partial) may leave some changed files out: each
-    file either reaches its exact target version or stays exactly as in B. Omit
-    --base to build from an empty tree instead of B.
+    file either reaches its exact target version or stays exactly as in B. Use
+    --from-scratch to build from an empty tree instead of B.
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
     budget. Finish validates and removes the authoring worktree; resume checks
     the retelling out again for revision. Show prints steps; view browses them
-    interactively; web opens an animated browser slideshow; check optionally
-    runs project commands. This tool does not generate explanations or call an
+    interactively; web opens an animated browser slideshow; test optionally
+    runs project commands on every step. This tool does not generate explanations or call an
     LLM.
 
     \b
     Example workflow (B and H are existing commits):
-      git-retell start demo --base B --target H --worktree /tmp/demo
+      git-retell start demo --from B --to H --worktree /tmp/demo
       # Edit files in /tmp/demo, then git add and git commit with explanations.
       git-retell validate demo --json
       git-retell finish demo
@@ -59,12 +59,22 @@ def cli():
 @cli.command()
 @click.argument("name")
 @click.option(
-    "--base",
-    help="Real before commit/revision, pinned at creation. "
-    "Omit to build the files from scratch, starting with an empty tree.",
+    "--from",
+    "base",
+    metavar="REV",
+    help="Real before commit/revision (the base), pinned at creation.",
 )
 @click.option(
-    "--target", required=True, help="Real after commit/revision, pinned at creation."
+    "--from-scratch",
+    is_flag=True,
+    help="Start from a new empty-tree commit instead of a real base.",
+)
+@click.option(
+    "--to",
+    "target",
+    metavar="REV",
+    required=True,
+    help="Real after commit/revision (the target), pinned at creation.",
 )
 @click.option(
     "--worktree",
@@ -94,6 +104,7 @@ def cli():
 def start(
     name: str,
     base: str | None,
+    from_scratch: bool,
     target: str,
     worktree: Path,
     budget: int,
@@ -109,8 +120,9 @@ def start(
     rejected; names start with a-z and contain only lowercase letters, digits,
     and hyphens. Both revisions are pinned even if their branches later move.
 
-    Without --base, B is a new parentless commit of the empty tree, so the
-    retelling builds every file from nothing. This pairs well with --partial.
+    Pass --from B, or --from-scratch to make B a new parentless commit of the
+    empty tree, so the retelling builds every file from nothing. This pairs
+    well with --partial.
 
     With --partial, the retelling may leave out some of the files that differ
     between B and H, such as lock files, generated code, or tests. It is all or
@@ -120,19 +132,23 @@ def start(
 
     \b
     Examples:
-      git-retell start demo --base main --target feature --worktree /tmp/demo
-      git-retell start compact --base HEAD~1 --target HEAD --worktree /tmp/compact --budget 40 --context 0
-      git-retell start core --base main --target feature --worktree /tmp/core --partial
-      git-retell start fresh --target HEAD --worktree /tmp/fresh --partial
+      git-retell start demo --from main --to feature --worktree /tmp/demo
+      git-retell start compact --from HEAD~1 --to HEAD --worktree /tmp/compact --budget 40 --context 0
+      git-retell start core --from main --to feature --worktree /tmp/core --partial
+      git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
 
     In the new worktree, edit files and commit explanatory steps until the tree
     matches the target. Use Git amend/rebase to revise steps and validate to
     inspect progress. No commits are synthesized automatically.
     """
+    if (base is None) == (not from_scratch):
+        raise click.UsageError(
+            "Pass either --from REV or --from-scratch (to build from an empty tree)."
+        )
     retelling = start_retelling(
         root(), name, base, target, worktree.resolve(), budget, context, partial
     )
-    scratch = " (empty tree; building from scratch)" if base is None else ""
+    scratch = " (empty tree; building from scratch)" if from_scratch else ""
     click.echo(
         f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
         f"Base: {retelling.base}{scratch}\nTarget: {retelling.target}\n"
@@ -142,7 +158,7 @@ def start(
 
 
 def file_filters(command):
-    """Add --path and --exclude, which narrow what a viewer shows, not validation."""
+    """Add --include and --exclude, which narrow what a viewer shows, not validation."""
     command = click.option(
         "--exclude",
         "exclude",
@@ -151,7 +167,7 @@ def file_filters(command):
         help="Hide files matching this Git pathspec. Repeatable.",
     )(command)
     return click.option(
-        "--path",
+        "--include",
         "include",
         multiple=True,
         metavar="PATHSPEC",
@@ -322,7 +338,7 @@ def show(
     prints the complete sequence. Uses saved context unless overridden, and
     does not require a terminal or enforce the budget. Run validate separately.
 
-    --path and --exclude take Git pathspecs (directories, globs such as
+    --include and --exclude take Git pathspecs (directories, globs such as
     '*.lock') and limit each diff to the matching files. With --all, steps that
     change none of them are skipped; step numbers stay those of the full history.
 
@@ -366,7 +382,7 @@ def view(
     displayed context, so expanding context can change VALID to INVALID if it
     exceeds the saved budget. Live changes never alter the saved defaults.
 
-    --path and --exclude take Git pathspecs and limit each diff to the matching
+    --include and --exclude take Git pathspecs and limit each diff to the matching
     files; n/p skip steps that change none of them. Validation still covers
     every file.
 
@@ -374,7 +390,7 @@ def view(
     Examples:
       git-retell view demo
       git-retell view demo --context 12
-      git-retell view demo --path src/parser.py
+      git-retell view demo --include src/parser.py
 
     A terminal is required. For a pipe, file, or pager, use show instead.
     """
@@ -428,7 +444,7 @@ def web(
     /: choose which files to show. Home/End: first/last step. ?: help.
 
     The Files panel (/) and each file's focus button hide files; navigation
-    then skips steps that change none of the shown files. --path and --exclude
+    then skips steps that change none of the shown files. --include and --exclude
     take Git pathspecs and choose the files shown at first. The page still
     embeds every file, so viewers can show the rest.
 
@@ -451,29 +467,59 @@ def web(
     click.echo(f"Wrote {path}")
 
 
-@cli.command(context_settings={"ignore_unknown_options": True})
+@cli.command(name="test", context_settings={"ignore_unknown_options": True})
 @click.argument("name")
 @click.option(
-    "--timeout", default=300.0, show_default=True, type=click.FloatRange(min=0.01)
+    "--timeout",
+    default=300.0,
+    show_default=True,
+    type=click.FloatRange(min=0.01),
+    help="Seconds allowed per step.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Print exit codes, output, and timeouts for every step as JSON.",
 )
 @click.argument("command", nargs=-1, required=True, type=click.UNPROCESSED)
-def check(name: str, timeout: float, command: tuple[str, ...]):
-    """Run COMMAND on each synthetic step in fresh detached worktrees.
+def run_tests(name: str, timeout: float, as_json: bool, command: tuple[str, ...]):
+    """Run COMMAND on every step, each in a fresh detached worktree.
 
     \b
     Examples:
-      git-retell check demo --timeout 60 -- pytest
-      git-retell check demo -- npm test
+      git-retell test demo --timeout 60 -- pytest
+      git-retell test demo --json -- npm test
 
-    Use -- to separate this tool's options from the check command's arguments.
+    Use -- to separate this tool's options from the command's arguments.
     Each step starts in its own checkout, so install dependencies as needed.
+    The base is not a step and is not tested.
 
     Runs project code with your permissions; worktrees are isolation for files,
-    not a security sandbox. Captures output as JSON. Exit 1 means a check failed;
-    failures do not affect validate. Each worktree is removed after its check.
+    not a security sandbox. Prints each step's result and the output of failed
+    steps, or everything with --json. Exit 1 means a step failed; failures do
+    not affect validate. Each worktree is removed after its run.
     """
-    results = checks.check(Retelling.load(root(), name), command, timeout)
-    click.echo(json.dumps(results, indent=2))
+    retelling = Retelling.load(root(), name)
+    results = checks.check(retelling, command, timeout)
+    if as_json:
+        click.echo(json.dumps(results, indent=2))
+    else:
+        for item in results:
+            subject = retelling.message(item["commit"]).split("\n")[0]
+            status = (
+                "pass"
+                if item["passed"]
+                else "timeout"
+                if item["timed_out"]
+                else f"fail ({item['returncode']})"
+            )
+            click.echo(f"{item['step']:>3} {item['commit'][:8]} {status:<9} {subject}")
+            if not item["passed"]:
+                for line in (item["stdout"] + item["stderr"]).rstrip().splitlines():
+                    click.echo(f"      {line}")
+        failed = sum(not item["passed"] for item in results)
+        click.echo(f"{len(results) - failed} of {len(results)} steps passed.")
     if any(not item["passed"] for item in results):
         raise click.exceptions.Exit(1)
 

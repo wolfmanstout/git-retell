@@ -25,9 +25,9 @@ def test_start_rejects_collisions_without_changing_retelling(repo, tmp_path):
         [
             "start",
             "demo",
-            "--base",
+            "--from",
             "HEAD",
-            "--target",
+            "--to",
             "HEAD",
             "--worktree",
             str(path),
@@ -40,15 +40,26 @@ def test_start_rejects_collisions_without_changing_retelling(repo, tmp_path):
         [
             "start",
             "../bad",
-            "--base",
+            "--from",
             "HEAD",
-            "--target",
+            "--to",
             "HEAD",
             "--worktree",
             str(tmp_path / "bad"),
         ],
     )
     assert result.exit_code != 0
+
+
+def test_start_requires_exactly_one_base(repo, tmp_path):
+    runner = CliRunner()
+    for base in ([], ["--from", "HEAD", "--from-scratch"]):
+        result = runner.invoke(
+            cli,
+            ["start", "demo", *base, "--to", "HEAD", "--worktree", str(tmp_path / "x")],
+        )
+        assert result.exit_code == 2 and "--from-scratch" in result.output
+        assert not (tmp_path / "x").exists()
 
 
 def test_cli_validate_show_and_nonterminal_view(repo, tmp_path):
@@ -196,9 +207,9 @@ def test_context_flags_and_legacy_defaults(repo, tmp_path, monkeypatch):
         [
             "start",
             "demo",
-            "--base",
+            "--from",
             base,
-            "--target",
+            "--to",
             target,
             "--worktree",
             str(path),
@@ -286,7 +297,16 @@ def test_start_partial_from_scratch_and_configure(repo, tmp_path):
     path = tmp_path / "fresh"
     result = runner.invoke(
         cli,
-        ["start", "fresh", "--target", "HEAD", "--worktree", str(path), "--partial"],
+        [
+            "start",
+            "fresh",
+            "--from-scratch",
+            "--to",
+            "HEAD",
+            "--worktree",
+            str(path),
+            "--partial",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert "from scratch" in result.output and "partial" in result.output
@@ -314,7 +334,9 @@ def test_show_filters_files_and_skips_steps(repo, tmp_path):
     assert result.exit_code == 0, result.output
     assert "Only notes" not in result.output and "notes.md" not in result.output
     assert "2/2" in result.output and "filtered" in result.output
-    result = runner.invoke(cli, ["show", "demo", "--step", "1", "--path", "code.txt"])
+    result = runner.invoke(
+        cli, ["show", "demo", "--step", "1", "--include", "code.txt"]
+    )
     assert "No changes to the selected files" in result.output
     # Filters change only what is shown; validation still covers every file.
     assert runner.invoke(cli, ["validate", "demo"]).exit_code == 0

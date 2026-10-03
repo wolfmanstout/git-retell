@@ -10,7 +10,7 @@ Synthetic Git histories for code review
 Explain a real code transformation **B → H** with a synthetic Git history
 **B → S1 → S2 → … → H**. Each commit is a slide; its message explains its diff.
 An agent or human authors the steps. This CLI supplies the authoring worktree,
-validation, metrics, optional checks, and terminal and browser slideshows. No
+validation, metrics, optional per-step tests, and terminal and browser slideshows. No
 LLM API required.
 
 The endpoints must be exact. Intermediate implementations can be temporary,
@@ -50,7 +50,7 @@ After installation, run `git-retell` in the repository you want to explain:
 git-retell --help
 
 # Commit the real change first; B and H must resolve to commits.
-git-retell start demo --base HEAD~1 --target HEAD \
+git-retell start demo --from HEAD~1 --to HEAD \
   --worktree /tmp/retell-demo --budget 40
 
 # In /tmp/retell-demo, use ordinary Git to author the explanation:
@@ -63,7 +63,7 @@ git-retell finish demo   # validate, then remove /tmp/retell-demo
 git-retell show demo --step 1
 git-retell view demo
 git-retell web demo
-git-retell check demo --timeout 60 -- pytest
+git-retell test demo --timeout 60 -- pytest
 git-retell resume demo --worktree /tmp/retell-demo   # revise it later
 git-retell list
 ```
@@ -81,14 +81,15 @@ excluded files to maintain; the omitted files are whatever still differs from
 the target, so which files to leave out is up to the author (or the agent's
 prompt). `configure NAME --partial` or `--no-partial` changes the setting later.
 
-Omit `--base` to build the files from nothing. `start` then anchors the
+Pass `--from-scratch` instead of `--from` to build the files from nothing.
+`start` then anchors the
 retelling at a new parentless commit of the empty tree, stored at the usual
 base ref. This pairs well with `--partial`: retell a few core files from
 scratch and leave the rest of the repository out.
 
 ```sh
-git-retell start core --base main --target feature --worktree /tmp/core --partial
-git-retell start fresh --target HEAD --worktree /tmp/fresh --partial
+git-retell start core --from main --to feature --worktree /tmp/core --partial
+git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
 ```
 
 ## What is validated?
@@ -228,14 +229,14 @@ files; Only shows them and hides everything else. Steps that change none of
 the shown files fade on the seek bar and are skipped: next/previous pass over
 them, and clicking one on the seek bar lands on the nearest shown step.
 
-`show`, `view`, and `web` accept `--path` and `--exclude` with Git pathspecs,
+`show`, `view`, and `web` accept `--include` and `--exclude` with Git pathspecs,
 each repeatable. `show --all` and `view` skip steps that change none of the
 selected files; step numbers stay those of the full history. For `web`, the
 flags only choose the files shown at first. The page still embeds everything.
 
 ```sh
 git-retell show demo --all --exclude tests/ --exclude '*.lock'
-git-retell view demo --path src/parser.py
+git-retell view demo --include src/parser.py
 git-retell web demo --exclude tests/
 ```
 
@@ -247,7 +248,7 @@ hunk. Zero context is allowed. Context can change hunk grouping and presentation
 size; it does not change tree identity or code churn.
 
 ```sh
-git-retell start demo --base main --target feature --worktree /tmp/demo --context 6
+git-retell start demo --from main --to feature --worktree /tmp/demo --context 6
 git-retell validate demo --context 0 --budget 40 --json
 git-retell show demo --step 2 --context 12
 git-retell view demo --context 12
@@ -255,7 +256,7 @@ git-retell view demo --context 12
 
 `validate`, `show`, and `view` use saved context unless you pass `--context`.
 Overrides apply only to that invocation. The validation report includes the
-context used for every presentation-size metric. Checks run code and do not need
+context used for every presentation-size metric. `test` runs code and does not need
 a diff context setting. Retellings without a saved setting use its default.
 To print or update saved defaults later, use `git-retell configure demo` or
 `git-retell configure demo --budget 80 --context 6`.
@@ -294,7 +295,7 @@ deletion is not archival.
 ## Suggested agent prompt
 
 The CLI does not prescribe an explanatory style. Here is an editable starting
-point that favors progressive refinement; change the style, budget, checks, and
+point that favors progressive refinement; change the style, budget, tests, and
 scope to suit your review. Replace the angle-bracket placeholders before use.
 
 ```text
@@ -313,20 +314,22 @@ purpose and temporary limitations. Treat these as preferences, not rigid rules.
 files; retell every other changed file completely.>
 
 Preserve existing retellings. Reach the exact target tree, run git-retell
-finish, and report the view command, expansion, and any check results or
+finish, and report the view command, expansion, and any test results or
 limitations.
 ```
 
-## Checks
+## Testing every step
 
-`check NAME -- COMMAND ...` runs the exact argument vector, without a shell, on
-each explanatory commit in a fresh detached worktree. It emits JSON containing
-exit codes, stdout, stderr, and timeout results, then exits 1 if any check failed.
-The base is not a step. Worktrees are removed after success, failure, or timeout;
-on POSIX the timed-out process group is killed. Checks can install dependencies
-or create files without modifying the authoring worktree. They execute project
-code with your permissions; a worktree is not a security sandbox. Submodules and
-Git LFS content are not automatically fetched. No checks run unless requested.
+`test NAME -- COMMAND ...` runs the exact argument vector, without a shell, on
+each explanatory commit in a fresh detached worktree. It prints a pass/fail line
+per step with the output of failed steps, then exits 1 if any step failed.
+`--json` instead emits exit codes, stdout, stderr, and timeout results for every
+step. The base is not a step. Worktrees are removed after success, failure, or
+timeout; on POSIX the timed-out process group is killed. Commands can install
+dependencies or create files without modifying the authoring worktree. They
+execute project code with your permissions; a worktree is not a security
+sandbox. Submodules and Git LFS content are not automatically fetched. Nothing
+runs unless requested.
 
 ## Pure Git storage
 
@@ -379,5 +382,5 @@ When running from source during retelling authoring, use the original checkout
 so the tool remains available while the synthetic implementation is incomplete.
 
 Tests exercise real temporary repositories and worktrees, including exact trees,
-nonlinear histories, diff budgets, binary patches, unusual paths, check cleanup,
+nonlinear histories, diff budgets, binary patches, unusual paths, test cleanup,
 and terminal navigation.
