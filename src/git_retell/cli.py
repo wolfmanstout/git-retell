@@ -7,6 +7,7 @@ import click
 
 from . import checks
 from .git import pathspecs, root
+from .history import History
 from .retelling import (
     Retelling,
     inspect,
@@ -20,7 +21,7 @@ from .retelling import delete as delete_retelling
 from .retelling import finish as finish_retelling
 from .retelling import resume as resume_retelling
 from .retelling import start as start_retelling
-from .viewer import selected_steps, slide
+from .viewer import Story, selected_steps, slide
 from .viewer import view as view_retelling
 from .web import web as web_retelling
 
@@ -38,16 +39,17 @@ def cli():
 
     A partial retelling (start --partial) may leave some changed files out: each
     file either reaches its exact target version or stays exactly as in B. Use
-    --from-scratch to build from an empty tree instead of B, and
-    --to-uncommitted or --to-staged to retell work you have not committed.
+    --from-scratch to build from an empty tree instead of B. To retell work you
+    have not committed, use --to-uncommitted or --to-staged.
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
     budget. Finish validates and removes the authoring worktree; resume checks
     the retelling out again for revision. Show prints steps; view browses them
     interactively; web opens an animated browser slideshow; test optionally
-    runs project commands on every step. This tool does not generate
-    explanations or call an LLM.
+    runs project commands on every step. These four also take --from REV
+    instead of NAME to step through real commits, such as a branch since main.
+    This tool does not generate explanations or call an LLM.
 
     \b
     Example workflow (B and H are existing commits):
@@ -109,6 +111,48 @@ def chosen_target(
     return commit, note
 
 
+def range_options(command):
+    """Add --from/--from-scratch and the --to options for viewing real commits."""
+    command = target_options(command)
+    command = click.option(
+        "--from-scratch",
+        is_flag=True,
+        help="With no NAME: show every commit back to the first one.",
+    )(command)
+    return click.option(
+        "--from",
+        "base",
+        metavar="REV",
+        help="With no NAME: show the commits after REV, up to --to (default HEAD).",
+    )(command)
+
+
+def load_story(
+    name: str | None,
+    base: str | None,
+    from_scratch: bool,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
+) -> Story:
+    """A retelling by NAME, or the real commits that --from and --to select."""
+    ranged = from_scratch or to_uncommitted or to_staged
+    if name is not None:
+        if ranged or base is not None or target is not None:
+            raise click.UsageError("Pass a retelling NAME or --from/--to, not both.")
+        return Retelling.load(root(), name)
+    if (base is None) == (not from_scratch):
+        raise click.UsageError(
+            "Pass a retelling NAME, or --from REV or --from-scratch to show real commits."
+        )
+    if target is None and not to_uncommitted and not to_staged:
+        target = "HEAD"
+    repo = root()
+    end = target or ("uncommitted" if to_uncommitted else "staged")
+    target, _ = chosen_target(repo, target, to_uncommitted, to_staged)
+    return History.load(repo, base, target, f"{base}..{end}" if base else end)
+
+
 @cli.command()
 @click.argument("name")
 @click.option(
@@ -162,12 +206,17 @@ def start(
 ):
     """Pin endpoints and create branch retell/NAME at B in a separate worktree.
 
-    Revisions must be commits. To retell work you have not committed, use
-    --to-uncommitted (staged, unstaged, and untracked files that are not
-    ignored) or --to-staged (the index only). Either one commits a SYNTHETIC
-    snapshot on top of HEAD without touching your checkout or index, pins it
-    as the target, and makes --from default to HEAD. The snapshot is frozen;
-    after more edits, configure NAME --to-uncommitted takes a new one.
+    Revisions must be commits. For work you have not committed, the target
+    can instead be a snapshot:
+
+    \b
+      --to-uncommitted  staged, unstaged, and untracked (not ignored) files
+      --to-staged       only the staged changes in the index
+
+    Either one commits a SYNTHETIC snapshot on top of HEAD without touching
+    your checkout or index, pins it as the target, and makes --from default to
+    HEAD. The snapshot is frozen; after more edits, configure NAME
+    --to-uncommitted takes a new one.
 
     Use ordinary Git to edit, commit, amend, or rebase the synthetic branch. The base commit
     is the anchor and is not counted as a slide. Keep one parent per step.
@@ -370,7 +419,8 @@ def finish(name: str):
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", required=False)
+@range_options
 @click.option("--step", default=1, show_default=True, type=click.IntRange(min=1))
 @click.option(
     "--all",
@@ -385,7 +435,12 @@ def finish(name: str):
 )
 @file_filters
 def show(
-    name: str,
+    name: str | None,
+    base: str | None,
+    from_scratch: bool,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
     step: int,
     all_steps: bool,
     context: int | None,
@@ -402,14 +457,22 @@ def show(
     '*.lock') and limit each diff to the matching files. With --all, steps that
     change none of them are skipped; step numbers stay those of the full history.
 
+    With --from REV (or --from-scratch) instead of NAME, shows real commits:
+    the first-parent chain reachable from --to (default HEAD) but not from REV,
+    each against the commit before it, like git log REV..HEAD. A branch thus
+    starts where it forked even if REV moved on. --to-uncommitted or
+    --to-staged adds a final snapshot of work in progress on top of HEAD.
+    Real commits have no budget or validation.
+
     \b
     Examples:
       git-retell show demo --step 2 --context 10
       git-retell show demo --all > retelling.txt
       git-retell show demo --all | less
       git-retell show demo --all --exclude tests/ --exclude '*.lock'
+      git-retell show --from main --all
     """
-    retelling = Retelling.load(root(), name)
+    retelling = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
     commits = retelling.commits()
     if not commits or (not all_steps and step > len(commits)):
         raise click.ClickException(f"Choose a step between 1 and {len(commits)}.")
@@ -420,7 +483,8 @@ def show(
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", required=False)
+@range_options
 @click.option(
     "--context",
     type=click.IntRange(min=0),
@@ -428,7 +492,15 @@ def show(
 )
 @file_filters
 def view(
-    name: str, context: int | None, include: tuple[str, ...], exclude: tuple[str, ...]
+    name: str | None,
+    base: str | None,
+    from_scratch: bool,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
+    context: int | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
 ):
     """Browse synthetic steps with paging and adjustable diff context.
 
@@ -446,23 +518,32 @@ def view(
     files; n/p skip steps that change none of them. Validation still covers
     every file.
 
+    With --from REV (or --from-scratch) instead of NAME, shows real commits:
+    the first-parent chain reachable from --to (default HEAD) but not from REV,
+    each against the commit before it, like git log REV..HEAD. A branch thus
+    starts where it forked even if REV moved on. --to-uncommitted or
+    --to-staged adds a final snapshot of work in progress on top of HEAD.
+    Real commits have no budget or validation.
+
     \b
     Examples:
       git-retell view demo
       git-retell view demo --context 12
       git-retell view demo --include src/parser.py
+      git-retell view --from main --to-uncommitted
 
     A terminal is required. For a pipe, file, or pager, use show instead.
     """
     view_retelling(
-        Retelling.load(root(), name),
+        load_story(name, base, from_scratch, target, to_uncommitted, to_staged),
         context=context,
         pathspecs=pathspecs(include, exclude),
     )
 
 
 @cli.command()
-@click.argument("name")
+@click.argument("name", required=False)
+@range_options
 @click.option(
     "--context",
     type=click.IntRange(min=0),
@@ -483,7 +564,12 @@ def view(
 )
 @file_filters
 def web(
-    name: str,
+    name: str | None,
+    base: str | None,
+    from_scratch: bool,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
     context: int | None,
     output: Path | None,
     open_browser: bool,
@@ -511,14 +597,30 @@ def web(
     The page embeds every file version it shows, needs no server or network,
     and can be shared as a single file. It is a snapshot; rerun after editing.
 
+    With --from REV (or --from-scratch) instead of NAME, shows real commits:
+    the first-parent chain reachable from --to (default HEAD) but not from REV,
+    each against the commit before it, like git log REV..HEAD. A branch thus
+    starts where it forked even if REV moved on. --to-uncommitted or
+    --to-staged adds a final snapshot of work in progress on top of HEAD.
+    Real commits have no budget or validation.
+    The page then shows each commit's author and date, and its line-lifetime
+    marks show code that a later commit rewrote or removed.
+
     \b
     Examples:
       git-retell web demo
       git-retell web demo --no-open -o demo.html
       git-retell web demo --exclude tests/ --exclude '*.lock'
+      git-retell web --from main
     """
+    story = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
+    if len(story.commits()) > LARGE_HISTORY:
+        click.echo(
+            f"Embedding {len(story.commits())} commits; the page may be large.",
+            err=True,
+        )
     path = web_retelling(
-        Retelling.load(root(), name),
+        story,
         output,
         open_browser,
         context,
@@ -527,8 +629,13 @@ def web(
     click.echo(f"Wrote {path}")
 
 
+# Pages for longer histories can grow large, since they embed every version.
+LARGE_HISTORY = 200
+
+
 @cli.command(name="test", context_settings={"ignore_unknown_options": True})
-@click.argument("name")
+@click.argument("name", required=False)
+@range_options
 @click.option(
     "--timeout",
     default=300.0,
@@ -542,14 +649,28 @@ def web(
     is_flag=True,
     help="Print exit codes, output, and timeouts for every step as JSON.",
 )
-@click.argument("command", nargs=-1, required=True, type=click.UNPROCESSED)
-def run_tests(name: str, timeout: float, as_json: bool, command: tuple[str, ...]):
+@click.argument("command", nargs=-1, type=click.UNPROCESSED)
+def run_tests(
+    name: str | None,
+    base: str | None,
+    from_scratch: bool,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
+    timeout: float,
+    as_json: bool,
+    command: tuple[str, ...],
+):
     """Run COMMAND on every step, each in a fresh detached worktree.
 
     \b
     Examples:
       git-retell test demo --timeout 60 -- pytest
       git-retell test demo --json -- npm test
+      git-retell test --from main -- pytest
+
+    With --from REV (or --from-scratch) instead of NAME, runs COMMAND on each
+    real commit that show --from REV would list, with the same --to options.
 
     Use -- to separate this tool's options from the command's arguments.
     Each step starts in its own checkout, so install dependencies as needed.
@@ -560,7 +681,12 @@ def run_tests(name: str, timeout: float, as_json: bool, command: tuple[str, ...]
     steps, or everything with --json. Exit 1 means a step failed; failures do
     not affect validate. Each worktree is removed after its run.
     """
-    retelling = Retelling.load(root(), name)
+    if name is not None and (base is not None or from_scratch):
+        # Without NAME, the first word of COMMAND fills that argument.
+        name, command = None, (name, *command)
+    if not command:
+        raise click.UsageError("Missing COMMAND to run on every step.")
+    retelling = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
     results = checks.check(retelling, command, timeout)
     if as_json:
         click.echo(json.dumps(results, indent=2))

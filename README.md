@@ -260,6 +260,32 @@ git-retell view demo --include src/parser.py
 git-retell web demo --exclude tests/
 ```
 
+## Viewing real commits
+
+`show`, `view`, `web`, and `test` also work on real commits, without a
+retelling. Pass `--from REV` instead of a name to step through the commits on
+the current branch since REV, each against the commit before it:
+
+```sh
+git-retell web --from main
+git-retell view --from v1.2 --to v1.3
+git-retell show --from main --to-uncommitted --all
+git-retell test --from main -- pytest
+```
+
+The commits are the first-parent chain reachable from `--to` (default HEAD) but
+not from `--from`, like `git log --first-parent main..HEAD`. A branch therefore
+starts where it forked even after main moves on, and a merge of main into the
+branch is one slide showing everything the merge brought in. `--from-scratch`
+goes back to the first commit. `--to-uncommitted` or `--to-staged` adds a
+final slide with a snapshot of your work in progress.
+
+Real commits have no budget or validation, so the viewers drop the VALID
+status, and slides show each commit's author and date. Everything else works
+as for a retelling, including filters, context, and line lifetimes, which here
+show code that a later commit rewrote or removed. Pages for very long
+histories can get large, since they embed every version of every file.
+
 ## Configuration
 
 `start --budget N --context N` saves defaults for a retelling. The defaults are

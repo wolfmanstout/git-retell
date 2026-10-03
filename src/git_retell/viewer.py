@@ -7,7 +7,11 @@ import unicodedata
 import click
 
 from .git import diff
+from .history import History
 from .retelling import Retelling, inspect
+
+# Viewers show a retelling's synthetic steps or a range of real commits.
+Story = Retelling | History
 
 
 def safe_text(text: str) -> str:
@@ -21,7 +25,7 @@ def safe_text(text: str) -> str:
 
 
 def slide(
-    retelling: Retelling,
+    retelling: Story,
     commits: list[str],
     index: int,
     *,
@@ -31,8 +35,13 @@ def slide(
     context = retelling.context if context is None else context
     commit = commits[index]
     previous = retelling.base if index == 0 else commits[index - 1]
-    kind = "partial retelling" if retelling.partial else "retelling"
-    heading = f"SYNTHETIC explanatory {kind} · {retelling.name} · {index + 1}/{len(commits)} · {commit[:8]}"
+    position = f"{index + 1}/{len(commits)} · {commit[:8]}"
+    if isinstance(retelling, History):
+        author, date = retelling.byline(commit)
+        heading = f"History · {retelling.label} · {position} · {author} · {date}"
+    else:
+        kind = "partial retelling" if retelling.partial else "retelling"
+        heading = f"SYNTHETIC explanatory {kind} · {retelling.name} · {position}"
     message = safe_text(retelling.message(commit))
     patch = safe_text(
         diff(retelling.repo, previous, commit, context=context, pathspecs=pathspecs)
@@ -43,7 +52,7 @@ def slide(
     return f"{heading}\n\n{message}\n\n{patch}"
 
 
-def selected_steps(retelling: Retelling, pathspecs: list[str] | None) -> list[int]:
+def selected_steps(retelling: Story, pathspecs: list[str] | None) -> list[int]:
     """Indices of the steps that change any selected file."""
     commits = retelling.commits()
     if pathspecs is None:
@@ -114,13 +123,13 @@ def page(
 
 
 def view(
-    retelling: Retelling,
+    retelling: Story,
     context: int | None = None,
     pathspecs: list[str] | None = None,
 ) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise click.ClickException(
-            "view needs a terminal. Use show NAME --all for plain output."
+            "view needs a terminal. Use show --all for plain output."
         )
     commits = retelling.commits()
     if not commits:
@@ -138,9 +147,9 @@ def view(
     cached = None
     content = ""
     while True:
-        if validated_context != context:
+        if validated_context != context and isinstance(retelling, Retelling):
             status = (
-                "VALID" if inspect(retelling, context=context)["valid"] else "INVALID"
+                "VALID " if inspect(retelling, context=context)["valid"] else "INVALID "
             )
             validated_context = context
         index = steps[position]
@@ -150,7 +159,7 @@ def view(
             )
             cached = (index, context)
         terminal = shutil.get_terminal_size()
-        label = f"{status} {index + 1}/{len(commits)} U{context}"
+        label = f"{status}{index + 1}/{len(commits)} U{context}"
         if pathspecs is not None:
             label += f" filtered {position + 1}/{len(steps)}"
         frame, offset, height, bottom = page(

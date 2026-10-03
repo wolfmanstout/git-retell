@@ -7,10 +7,10 @@ import tempfile
 from pathlib import Path
 
 from .git import git
-from .retelling import Retelling
+from .viewer import Story
 
 
-def check(retelling: Retelling, command: tuple[str, ...], timeout: float) -> list[dict]:
+def check(retelling: Story, command: tuple[str, ...], timeout: float) -> list[dict]:
     results = []
     for number, commit in enumerate(retelling.commits(), 1):
         with tempfile.TemporaryDirectory(prefix="git-retell-test-") as directory:

@@ -394,7 +394,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
 <body>
 <header class="bar">
   <div class="brand">git-retell <span id="name"></span></div>
-  <span class="tag">Synthetic</span>
+  <span class="tag" id="kind">Synthetic</span>
   <span class="tag" id="status"></span>
   <span class="tag" id="scratch" hidden title="Starts from an empty tree, not a real base commit">From scratch</span>
   <button class="tag" id="partial" hidden>Partial</button>
@@ -833,8 +833,8 @@ function renderStory(dir) {
   if (m) { subject = subject.slice(m[0].length); synthetic = true; }
   const paras = s.body ? s.body.split(/\n\s*\n/) : [];
   const body = paras.map(renderParagraph).join("");
-  const over = s.lines > D.budget;
-  const pct = Math.min(100, (s.lines / D.budget) * 100);
+  const over = D.budget !== null && s.lines > D.budget;
+  const pct = D.budget === null ? 0 : Math.min(100, (s.lines / D.budget) * 100);
   const files = s.files.map((f, k) => {
     const [dir, base] = splitPath(f.path);
     const badge = (f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "")
@@ -844,11 +844,12 @@ function renderStory(dir) {
   }).join("");
   const html = `<div class="story-inner">
     <div class="stepno"><b>${state.step + 1}</b><span>of ${D.slides.length} · <span class="mono">${s.commit.slice(0, 8)}</span></span></div>
-    <span class="synthetic">${synthetic ? "Synthetic step" : "Step"}</span>
+    <span class="synthetic">${D.history ? `Commit · ${esc(s.author)} · ${s.date}` : synthetic ? "Synthetic step" : "Step"}</span>
     <h1 class="subject">${inline(subject)}</h1>
     <div class="body">${body}</div>
-    <div class="meter${over ? " over" : ""}">${s.lines} of ${D.budget} diff lines at U${D.context}
-      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>
+    <div class="meter${over ? " over" : ""}">${D.budget === null ? `${s.lines} diff lines at U${D.context}`
+      : `${s.lines} of ${D.budget} diff lines at U${D.context}
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>`}</div>
     <div class="fates">${fatesHtml(STATS[state.step])}</div>
     ${s.files.length || !s.all.length ? `<ul class="filelist">${files}</ul>`
       : `<p class="hiddenonly">This step only changes hidden files (${plural(s.all.length, "file")}).</p>`}
@@ -1440,6 +1441,11 @@ function hashFilter(params) {
 
 try { const t = localStorage.getItem("git-retell-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 $("name").textContent = D.name;
+if (D.history) {
+  $("kind").textContent = "History";
+  $("kind").title = "Real commits, not a retelling; nothing is validated";
+  $("status").hidden = true;
+}
 $("status").textContent = D.valid ? "Valid" : "Invalid";
 $("status").className = "tag " + (D.valid ? "valid" : "invalid");
 $("status").title = D.valid ? `Every step fits ${D.budget} lines at U${D.context}` : D.issues.join("\n");

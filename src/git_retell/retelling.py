@@ -145,7 +145,7 @@ def snapshot(repo: Path, staged: bool) -> tuple[str, list[str]]:
         tree = git(repo, "write-tree", env=env).strip()
     kind = "staged" if staged else "uncommitted"
     if tree == resolve(repo, head, "tree"):
-        raise click.ClickException(f"No {kind} changes to retell.")
+        raise click.ClickException(f"No {kind} changes.")
     commit = synthetic_commit(
         repo, tree, f"SYNTHETIC snapshot of {kind} changes on {head[:12]}", [head]
     )

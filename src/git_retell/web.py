@@ -32,9 +32,10 @@ from pygments.token import (
 )
 from pygments.util import ClassNotFound
 
-from .git import git
+from .git import churn, diff, empty_tree, git, line_count
+from .history import History
 from .retelling import Retelling, inspect
-from .viewer import safe_text
+from .viewer import Story, safe_text
 
 EMPTY = "0" * 40
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
@@ -142,7 +143,7 @@ def highlight(path: str, text: str) -> list[str] | None:
 class Builder:
     """Accumulate line texts, file versions, and slides for the browser payload."""
 
-    def __init__(self, retelling: Retelling):
+    def __init__(self, retelling: Story):
         self.retelling = retelling
         self.text: list[str] = []
         self.html: list[str | None] = []
@@ -326,9 +327,11 @@ def numstats(repo: Path, before: str, after: str) -> dict[str, tuple[str, str]]:
     return result
 
 
-def selected_paths(retelling: Retelling, pathspecs: list[str]) -> list[str]:
+def selected_paths(retelling: Story, pathspecs: list[str]) -> list[str]:
     """Every path the history or the omitted files have that PATHSPECS select."""
     repo, tip = retelling.repo, retelling.tip
+    # A history of a root commit starts at the empty tree, which no log excludes.
+    since = [] if retelling.base == empty_tree(repo) else [f"^{retelling.base}"]
     touched = git(
         repo,
         "log",
@@ -337,7 +340,8 @@ def selected_paths(retelling: Retelling, pathspecs: list[str]) -> list[str]:
         "--format=",
         "--name-only",
         "-z",
-        f"{retelling.base}..{tip}",
+        tip,
+        *since,
         "--",
         *pathspecs,
     )
@@ -355,8 +359,65 @@ def selected_paths(retelling: Retelling, pathspecs: list[str]) -> list[str]:
     return sorted({path for path in (touched + "\0" + remaining).split("\0") if path})
 
 
+def summary(retelling: Story, context: int) -> tuple[dict, list[int]]:
+    """Header fields for the page and each step's presentation lines.
+
+    A real history has no budget or validity; its expansion compares the
+    commits' total churn with the net change, so rework shows above 1.
+    """
+    if isinstance(retelling, Retelling):
+        report = inspect(retelling, context=context)
+        fields = {
+            "name": retelling.name,
+            "base": retelling.base,
+            "target": retelling.target,
+            "valid": report["valid"],
+            "issues": report["issues"],
+            "budget": retelling.budget,
+            "context": context,
+            "expansion": report["expansion_factor"],
+            "partial": report["partial"],
+            "fromScratch": report["from_scratch"],
+            "omitted": [
+                {
+                    "path": item["path"],
+                    "added": item["added"],
+                    "deleted": item["deleted"],
+                    "binary": bool(item["binary_files"]),
+                }
+                for item in report["omitted_files"]
+            ],
+        }
+        return fields, [step["presentation_lines"] for step in report["steps"]]
+    repo, commits = retelling.repo, retelling.commits()
+    parents = [retelling.base, *commits[:-1]]
+    steps = [churn(repo, a, b) for a, b in zip(parents, commits)]
+    net = churn(repo, retelling.base, retelling.tip)
+    total = sum(step["added"] + step["deleted"] for step in steps)
+    binary = net["binary_files"] or any(step["binary_files"] for step in steps)
+    real = net["added"] + net["deleted"]
+    fields = {
+        "history": True,
+        "name": retelling.label,
+        "base": retelling.base,
+        "target": retelling.tip,
+        "valid": True,
+        "issues": [],
+        "budget": None,
+        "context": context,
+        "expansion": total / real if real and not binary else None,
+        "partial": False,
+        "fromScratch": retelling.base == empty_tree(repo),
+        "omitted": [],
+    }
+    lines = [
+        line_count(diff(repo, a, b, context=context)) for a, b in zip(parents, commits)
+    ]
+    return fields, lines
+
+
 def payload(
-    retelling: Retelling,
+    retelling: Story,
     context: int | None = None,
     pathspecs: list[str] | None = None,
 ) -> dict:
@@ -366,7 +427,7 @@ def payload(
         raise click.ClickException(
             "No explanatory steps yet. Create commits in the authoring worktree."
         )
-    report = inspect(retelling, context=context)
+    fields, sizes = summary(retelling, context)
     parents = [retelling.base, *commits[:-1]]
     changes = [raw_changes(retelling.repo, a, b) for a, b in zip(parents, commits)]
     content = blobs(
@@ -380,35 +441,19 @@ def payload(
     ):
         message = safe_text(retelling.message(commit))
         subject, _, body = message.partition("\n")
-        slides.append(
-            {
-                "commit": commit,
-                "subject": subject,
-                "body": without_trailers(body),
-                "lines": report["steps"][number]["presentation_lines"],
-                "files": builder.step(number, previous, commit, content, raw),
-            }
-        )
+        slide = {
+            "commit": commit,
+            "subject": subject,
+            "body": without_trailers(body),
+            "lines": sizes[number],
+            "files": builder.step(number, previous, commit, content, raw),
+        }
+        if isinstance(retelling, History):
+            author, date = retelling.byline(commit)
+            slide.update(author=safe_text(author), date=date)
+        slides.append(slide)
     return {
-        "name": retelling.name,
-        "base": retelling.base,
-        "target": retelling.target,
-        "valid": report["valid"],
-        "issues": report["issues"],
-        "budget": retelling.budget,
-        "context": context,
-        "expansion": report["expansion_factor"],
-        "partial": report["partial"],
-        "fromScratch": report["from_scratch"],
-        "omitted": [
-            {
-                "path": item["path"],
-                "added": item["added"],
-                "deleted": item["deleted"],
-                "binary": bool(item["binary_files"]),
-            }
-            for item in report["omitted_files"]
-        ],
+        **fields,
         "slides": slides,
         # The page starts showing only these paths; viewers can change it.
         "initialShow": None
@@ -437,7 +482,7 @@ def page(data: dict) -> str:
 
 
 def web(
-    retelling: Retelling,
+    retelling: Story,
     output: Path | None = None,
     open_browser: bool = True,
     context: int | None = None,
@@ -446,7 +491,8 @@ def web(
     document = page(payload(retelling, context, pathspecs))
     if output is None:
         directory = Path(tempfile.mkdtemp(prefix="git-retell-"))
-        output = directory / f"{retelling.name}.html"
+        name = retelling.name if isinstance(retelling, Retelling) else "history"
+        output = directory / f"{name}.html"
     output.write_text(document, encoding="utf-8")
     if open_browser:
         webbrowser.open(output.resolve().as_uri())
