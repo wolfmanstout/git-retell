@@ -437,6 +437,21 @@ def test_snapshot_targets_need_changes_and_exclude_each_other(repo, tmp_path):
         ],
     )
     assert result.exit_code == 2 and "exactly one of --to" in result.output
-    result = runner.invoke(cli, ["start", "x", "--from", "HEAD", "--worktree", path])
-    assert result.exit_code == 2 and "exactly one of --to" in result.output
     assert not (tmp_path / "x").exists()
+
+
+def test_start_targets_head_by_default_and_notes_uncommitted_work(repo, tmp_path):
+    head = resolve(repo, "HEAD")
+    (repo / "code.txt").write_text("edited\n")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["start", "x", "--from", "HEAD~0", "--worktree", str(tmp_path / "x")]
+    )
+    assert result.exit_code == 0, result.output
+    assert resolve(repo, "refs/retell/x/target") == head
+    assert "uncommitted changes are not included" in result.output
+    git(repo, "checkout", "code.txt")
+    result = runner.invoke(
+        cli, ["start", "y", "--from", "HEAD~0", "--worktree", str(tmp_path / "y")]
+    )
+    assert result.exit_code == 0 and "uncommitted" not in result.output

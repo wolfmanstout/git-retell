@@ -93,6 +93,10 @@ git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
 
 ## Retelling uncommitted work
 
+Without any `--to` option, the target is HEAD; if you have uncommitted
+changes, `start` notes that they are left out. The viewers and `test` use the
+same default and note.
+
 The target does not have to be committed. `--to-uncommitted` takes everything
 `git status` shows: staged, unstaged, and untracked files that are not
 ignored. `--to-staged` takes only the index. Either one commits a synthetic

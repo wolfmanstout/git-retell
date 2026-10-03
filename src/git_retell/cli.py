@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 
 from . import checks
-from .git import pathspecs, root
+from .git import git, pathspecs, root
 from .history import History
 from .retelling import (
     Retelling,
@@ -84,18 +84,32 @@ def target_options(command):
         "--to",
         "target",
         metavar="REV",
-        help="Real after commit/revision (the target), pinned when set.",
+        help="Real after commit/revision (the target). Defaults to HEAD, "
+        "except in configure.",
     )(command)
 
 
 def chosen_target(
-    repo: Path, target: str | None, uncommitted: bool, staged: bool
+    repo: Path,
+    target: str | None,
+    uncommitted: bool,
+    staged: bool,
+    default: str | None = "HEAD",
 ) -> tuple[str, str]:
-    """Resolve the one --to* option given to a revision and a description.
+    """Resolve the --to* option given, or DEFAULT, to a revision and a description.
 
     Snapshots are new commits; the description lists the untracked files that
-    an uncommitted snapshot captured, so a stray file is easy to spot.
+    an uncommitted snapshot captured, so a stray file is easy to spot. When
+    the default applies, warn if uncommitted work is being left out.
     """
+    if target is None and not uncommitted and not staged and default is not None:
+        if git(repo, "status", "--porcelain").strip():
+            click.echo(
+                "Note: uncommitted changes are not included; "
+                "add --to-uncommitted to include them.",
+                err=True,
+            )
+        return default, ""
     if sum([target is not None, uncommitted, staged]) != 1:
         raise click.UsageError(
             "Pass exactly one of --to REV, --to-uncommitted, or --to-staged."
@@ -145,10 +159,10 @@ def load_story(
         raise click.UsageError(
             "Pass a retelling NAME, or --from REV or --from-scratch to show real commits."
         )
-    if target is None and not to_uncommitted and not to_staged:
-        target = "HEAD"
     repo = root()
-    end = target or ("uncommitted" if to_uncommitted else "staged")
+    end = target or (
+        "uncommitted" if to_uncommitted else "staged" if to_staged else "HEAD"
+    )
     target, _ = chosen_target(repo, target, to_uncommitted, to_staged)
     return History.load(repo, base, target, f"{base}..{end}" if base else end)
 
@@ -206,8 +220,9 @@ def start(
 ):
     """Pin endpoints and create branch retell/NAME at B in a separate worktree.
 
-    Revisions must be commits. For work you have not committed, the target
-    can instead be a snapshot:
+    Revisions must be commits; --to defaults to HEAD, with a note if that
+    leaves uncommitted changes out. For work you have not committed, the
+    target can instead be a snapshot:
 
     \b
       --to-uncommitted  staged, unstaged, and untracked (not ignored) files
@@ -218,8 +233,8 @@ def start(
     HEAD. The snapshot is frozen; after more edits, configure NAME
     --to-uncommitted takes a new one.
 
-    Use ordinary Git to edit, commit, amend, or rebase the synthetic branch. The base commit
-    is the anchor and is not counted as a slide. Keep one parent per step.
+    Use ordinary Git to edit, commit, amend, or rebase the synthetic branch.
+    The base commit is the anchor and is not counted as a slide. Keep one parent per step.
     The original checkout remains untouched. Existing names or branches are
     rejected; names start with a-z and contain only lowercase letters, digits,
     and hyphens. Both revisions are pinned even if their branches later move.
@@ -237,6 +252,7 @@ def start(
     \b
     Examples:
       git-retell start demo --from main --to feature --worktree /tmp/demo
+      git-retell start branch --from main --worktree /tmp/branch
       git-retell start compact --from HEAD~1 --to HEAD --worktree /tmp/compact --budget 40 --context 0
       git-retell start core --from main --to feature --worktree /tmp/core --partial
       git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
@@ -753,7 +769,9 @@ def configure(
     repo = root()
     Retelling.load(repo, name)
     if target is not None or to_uncommitted or to_staged:
-        target, note = chosen_target(repo, target, to_uncommitted, to_staged)
+        target, note = chosen_target(
+            repo, target, to_uncommitted, to_staged, default=None
+        )
         click.echo(f"Target: {retarget(repo, name, target).target}{note}")
     changes = {"budget": budget, "context": context, "partial": partial}
     saved = save_settings(

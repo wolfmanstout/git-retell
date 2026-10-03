@@ -109,6 +109,15 @@ def test_uncommitted_work_becomes_a_final_slide(repo):
     assert "+wip" in result.output
 
 
+def test_default_target_notes_uncommitted_work(repo):
+    feature_branch(repo)
+    (repo / "new.txt").write_text("untracked\n")
+    result = CliRunner().invoke(cli, ["show", "--from", "main"])
+    assert result.exit_code == 0
+    assert "uncommitted changes are not included" in result.output
+    assert "new.txt" not in result.output
+
+
 def test_name_and_range_are_exclusive(repo):
     runner = CliRunner()
     result = runner.invoke(cli, ["show", "demo", "--from", "main"])
