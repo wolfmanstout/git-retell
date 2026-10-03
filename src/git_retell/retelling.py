@@ -3,6 +3,7 @@
 import json
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,7 +74,10 @@ def start(
     context: int = 3,
     partial: bool = False,
 ) -> Retelling:
-    """Pin endpoints; without a BASE, anchor at an empty root commit instead."""
+    """Pin endpoints; without a BASE, anchor at an empty root commit instead.
+
+    TARGET may be a snapshot commit, which the target ref then keeps alive.
+    """
     validate_name(name)
     after = resolve(repo, target)
     prefix = f"refs/retell/{name}"
@@ -88,11 +92,18 @@ def start(
 
 
 def empty_root(repo: Path, name: str) -> str:
-    """A parentless commit of the empty tree, so a retelling can build from scratch.
+    """A parentless commit of the empty tree, so a retelling can build from scratch."""
+    tree = git(repo, "mktree", input_text="").strip()
+    return synthetic_commit(
+        repo, tree, f"SYNTHETIC empty base for retelling {name}", []
+    )
+
+
+def synthetic_commit(repo: Path, tree: str, message: str, parents: list[str]) -> str:
+    """Commit TREE without touching any ref, index, or checkout.
 
     A fixed identity keeps it working without user.name and marks it as synthetic.
     """
-    tree = git(repo, "mktree", input_text="").strip()
     return git(
         repo,
         "-c",
@@ -101,9 +112,44 @@ def empty_root(repo: Path, name: str) -> str:
         "user.email=git-retell@invalid",
         "commit-tree",
         tree,
+        *(arg for parent in parents for arg in ("-p", parent)),
         "-m",
-        f"SYNTHETIC empty base for retelling {name}",
+        message,
     ).strip()
+
+
+def snapshot(repo: Path, staged: bool) -> tuple[str, list[str]]:
+    """Commit the staged changes, or every uncommitted change, on top of HEAD.
+
+    Works on a copy of the index, so the real index, HEAD, and files stay as
+    they are. Uncommitted changes include untracked files that are not ignored;
+    those are returned so they can be reported. Raises when nothing differs.
+    """
+    head = resolve(repo, "HEAD")
+    with tempfile.TemporaryDirectory(prefix="git-retell-index-") as directory:
+        index = Path(directory) / "index"
+        real = repo / git(repo, "rev-parse", "--git-path", "index").strip()
+        if real.is_file():
+            shutil.copyfile(real, index)
+        env = {"GIT_INDEX_FILE": str(index)}
+        untracked: list[str] = []
+        if not staged:
+            untracked = sorted(
+                path
+                for path in git(
+                    repo, "ls-files", "--others", "--exclude-standard", "-z", env=env
+                ).split("\0")
+                if path
+            )
+            git(repo, "add", "--all", "--", ":/", env=env)
+        tree = git(repo, "write-tree", env=env).strip()
+    kind = "staged" if staged else "uncommitted"
+    if tree == resolve(repo, head, "tree"):
+        raise click.ClickException(f"No {kind} changes to retell.")
+    commit = synthetic_commit(
+        repo, tree, f"SYNTHETIC snapshot of {kind} changes on {head[:12]}", [head]
+    )
+    return commit, untracked
 
 
 def inspect(
@@ -386,6 +432,13 @@ def settings(repo: Path, name: str) -> dict:
             )
         result[key] = value
     return result
+
+
+def retarget(repo: Path, name: str, target: str) -> Retelling:
+    """Pin a new target; the history then validates against it."""
+    Retelling.load(repo, name)
+    git(repo, "update-ref", f"refs/retell/{name}/target", resolve(repo, target))
+    return Retelling.load(repo, name)
 
 
 def save_settings(repo: Path, name: str, **changes: int | bool) -> dict:

@@ -49,7 +49,7 @@ After installation, run `git-retell` in the repository you want to explain:
 ```sh
 git-retell --help
 
-# Commit the real change first; B and H must resolve to commits.
+# B and H are commits; see below for uncommitted work.
 git-retell start demo --from HEAD~1 --to HEAD \
   --worktree /tmp/retell-demo --budget 40
 
@@ -82,8 +82,7 @@ the target, so which files to leave out is up to the author (or the agent's
 prompt). `configure NAME --partial` or `--no-partial` changes the setting later.
 
 Pass `--from-scratch` instead of `--from` to build the files from nothing.
-`start` then anchors the
-retelling at a new parentless commit of the empty tree, stored at the usual
+`start` then anchors the retelling at a new parentless commit of the empty tree, stored at the usual
 base ref. This pairs well with `--partial`: retell a few core files from
 scratch and leave the rest of the repository out.
 
@@ -91,6 +90,27 @@ scratch and leave the rest of the repository out.
 git-retell start core --from main --to feature --worktree /tmp/core --partial
 git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
 ```
+
+## Retelling uncommitted work
+
+The target does not have to be committed. `--to-uncommitted` takes everything
+`git status` shows: staged, unstaged, and untracked files that are not
+ignored. `--to-staged` takes only the index. Either one commits a synthetic
+snapshot of those files on top of HEAD and pins it as the target; `--from` then
+defaults to HEAD. Your checkout, index, and HEAD are left untouched, and `start`
+lists any untracked files the snapshot captured so a stray file is easy to
+spot (or leave out with `--partial`).
+
+```sh
+git-retell start wip --to-uncommitted --worktree /tmp/wip
+git-retell start wip --to-staged --worktree /tmp/wip
+```
+
+The snapshot is frozen, so you can keep editing while the retelling is
+written. To pick up later edits, `configure NAME --to-uncommitted` takes a new
+snapshot and pins it as the target; `--to REV` re-pins a commit, for example
+after rebasing the real change. The history is then validated against the new
+target, and the base stays where it was.
 
 ## What is validated?
 
@@ -337,7 +357,8 @@ For retelling `demo`, the only stored state is:
 
 - `refs/heads/retell/demo`: the ordinary synthetic commit chain.
 - `refs/retell/demo/base` and `refs/retell/demo/target`: pinned real commits
-  (or, when building from scratch, a synthetic empty base commit).
+  (or a synthetic empty base commit when building from scratch, and a
+  synthetic snapshot commit when retelling uncommitted work).
 - `refs/retell/demo/settings`: a JSON blob holding the default line `budget`,
   `context` lines per hunk, and whether the retelling is `partial`.
 

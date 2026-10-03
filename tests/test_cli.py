@@ -340,3 +340,103 @@ def test_show_filters_files_and_skips_steps(repo, tmp_path):
     assert "No changes to the selected files" in result.output
     # Filters change only what is shown; validation still covers every file.
     assert runner.invoke(cli, ["validate", "demo"]).exit_code == 0
+
+
+def test_start_snapshots_uncommitted_changes_without_touching_checkout(repo, tmp_path):
+    (repo / ".gitignore").write_text("build/\n")
+    commit(repo, "Ignore build output")
+    head = resolve(repo, "HEAD")
+    (repo / "code.txt").write_text("edited\n")
+    (repo / "staged.txt").write_text("staged\n")
+    git(repo, "add", "staged.txt")
+    (repo / "new.txt").write_text("untracked\n")
+    (repo / "build").mkdir()
+    (repo / "build" / "out").write_text("ignored\n")
+    status = git(repo, "status", "--porcelain", "--untracked-files=all")
+    runner = CliRunner()
+    path = tmp_path / "wip"
+    result = runner.invoke(
+        cli, ["start", "wip", "--to-uncommitted", "--worktree", str(path)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Includes 1 untracked files:\n  new.txt" in result.output
+    assert git(repo, "status", "--porcelain", "--untracked-files=all") == status
+    assert resolve(repo, "HEAD") == head
+    target = "refs/retell/wip/target"
+    assert resolve(repo, "refs/retell/wip/base") == head
+    assert git(repo, "show", "-s", "--format=%P %an %s", target).startswith(
+        f"{head} git-retell SYNTHETIC snapshot of uncommitted changes"
+    )
+    files = git(repo, "ls-tree", "-r", "--name-only", target).split()
+    assert files == [".gitignore", "code.txt", "new.txt", "staged.txt"]
+    assert git(repo, "show", f"{target}:code.txt") == "edited\n"
+    for name, text in [
+        ("code.txt", "edited\n"),
+        ("new.txt", "untracked\n"),
+        ("staged.txt", "staged\n"),
+    ]:
+        (path / name).write_text(text)
+    commit(path, "Explain the work in progress")
+    assert runner.invoke(cli, ["validate", "wip"]).exit_code == 0
+
+    # A new snapshot after more edits re-pins only the target.
+    (repo / "code.txt").write_text("edited again\n")
+    result = runner.invoke(cli, ["configure", "wip", "--to-uncommitted"])
+    assert result.exit_code == 0, result.output
+    assert git(repo, "show", f"{target}:code.txt") == "edited again\n"
+    assert resolve(repo, "refs/retell/wip/base") == head
+    assert runner.invoke(cli, ["validate", "wip"]).exit_code == 1
+
+
+def test_start_snapshots_staged_changes_only(repo, tmp_path):
+    (repo / "code.txt").write_text("staged\n")
+    git(repo, "add", "code.txt")
+    (repo / "code.txt").write_text("unstaged\n")
+    (repo / "new.txt").write_text("untracked\n")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "start",
+            "s",
+            "--from",
+            "HEAD~0",
+            "--to-staged",
+            "--worktree",
+            str(tmp_path / "s"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "untracked" not in result.output
+    target = "refs/retell/s/target"
+    assert git(repo, "ls-tree", "-r", "--name-only", target).split() == ["code.txt"]
+    assert git(repo, "show", f"{target}:code.txt") == "staged\n"
+    assert git(repo, "diff", "--cached", "--name-only").split() == ["code.txt"]
+
+
+def test_snapshot_targets_need_changes_and_exclude_each_other(repo, tmp_path):
+    runner = CliRunner()
+    path = str(tmp_path / "x")
+    result = runner.invoke(cli, ["start", "x", "--to-uncommitted", "--worktree", path])
+    assert result.exit_code == 1 and "No uncommitted changes" in result.output
+    (repo / "code.txt").write_text("edited\n")
+    result = runner.invoke(cli, ["start", "x", "--to-staged", "--worktree", path])
+    assert result.exit_code == 1 and "No staged changes" in result.output
+    result = runner.invoke(
+        cli,
+        [
+            "start",
+            "x",
+            "--from",
+            "HEAD",
+            "--to",
+            "HEAD",
+            "--to-staged",
+            "--worktree",
+            path,
+        ],
+    )
+    assert result.exit_code == 2 and "exactly one of --to" in result.output
+    result = runner.invoke(cli, ["start", "x", "--from", "HEAD", "--worktree", path])
+    assert result.exit_code == 2 and "exactly one of --to" in result.output
+    assert not (tmp_path / "x").exists()

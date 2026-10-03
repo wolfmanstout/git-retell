@@ -7,7 +7,15 @@ import click
 
 from . import checks
 from .git import pathspecs, root
-from .retelling import Retelling, inspect, names, save_settings, worktrees
+from .retelling import (
+    Retelling,
+    inspect,
+    names,
+    retarget,
+    save_settings,
+    snapshot,
+    worktrees,
+)
 from .retelling import delete as delete_retelling
 from .retelling import finish as finish_retelling
 from .retelling import resume as resume_retelling
@@ -30,15 +38,16 @@ def cli():
 
     A partial retelling (start --partial) may leave some changed files out: each
     file either reaches its exact target version or stays exactly as in B. Use
-    --from-scratch to build from an empty tree instead of B.
+    --from-scratch to build from an empty tree instead of B, and
+    --to-uncommitted or --to-staged to retell work you have not committed.
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
     budget. Finish validates and removes the authoring worktree; resume checks
     the retelling out again for revision. Show prints steps; view browses them
     interactively; web opens an animated browser slideshow; test optionally
-    runs project commands on every step. This tool does not generate explanations or call an
-    LLM.
+    runs project commands on every step. This tool does not generate
+    explanations or call an LLM.
 
     \b
     Example workflow (B and H are existing commits):
@@ -56,6 +65,50 @@ def cli():
     """
 
 
+def target_options(command):
+    """Add --to, --to-uncommitted, and --to-staged; choose one with chosen_target."""
+    command = click.option(
+        "--to-staged",
+        is_flag=True,
+        help="Snapshot the staged changes (the index) on top of HEAD as the target.",
+    )(command)
+    command = click.option(
+        "--to-uncommitted",
+        is_flag=True,
+        help="Snapshot every uncommitted change, including untracked files that "
+        "are not ignored, on top of HEAD as the target.",
+    )(command)
+    return click.option(
+        "--to",
+        "target",
+        metavar="REV",
+        help="Real after commit/revision (the target), pinned when set.",
+    )(command)
+
+
+def chosen_target(
+    repo: Path, target: str | None, uncommitted: bool, staged: bool
+) -> tuple[str, str]:
+    """Resolve the one --to* option given to a revision and a description.
+
+    Snapshots are new commits; the description lists the untracked files that
+    an uncommitted snapshot captured, so a stray file is easy to spot.
+    """
+    if sum([target is not None, uncommitted, staged]) != 1:
+        raise click.UsageError(
+            "Pass exactly one of --to REV, --to-uncommitted, or --to-staged."
+        )
+    if target is not None:
+        return target, ""
+    commit, untracked = snapshot(repo, staged)
+    note = f" (snapshot of {'staged' if staged else 'uncommitted'} changes on HEAD)"
+    if untracked:
+        note += f"\nIncludes {len(untracked)} untracked files:" + "".join(
+            f"\n  {path}" for path in untracked
+        )
+    return commit, note
+
+
 @cli.command()
 @click.argument("name")
 @click.option(
@@ -69,13 +122,7 @@ def cli():
     is_flag=True,
     help="Start from a new empty-tree commit instead of a real base.",
 )
-@click.option(
-    "--to",
-    "target",
-    metavar="REV",
-    required=True,
-    help="Real after commit/revision (the target), pinned at creation.",
-)
+@target_options
 @click.option(
     "--worktree",
     required=True,
@@ -105,7 +152,9 @@ def start(
     name: str,
     base: str | None,
     from_scratch: bool,
-    target: str,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
     worktree: Path,
     budget: int,
     context: int,
@@ -113,8 +162,14 @@ def start(
 ):
     """Pin endpoints and create branch retell/NAME at B in a separate worktree.
 
-    Revisions must be commits; uncommitted files are not included. Use ordinary
-    Git to edit, commit, amend, or rebase the synthetic branch. The base commit
+    Revisions must be commits. To retell work you have not committed, use
+    --to-uncommitted (staged, unstaged, and untracked files that are not
+    ignored) or --to-staged (the index only). Either one commits a SYNTHETIC
+    snapshot on top of HEAD without touching your checkout or index, pins it
+    as the target, and makes --from default to HEAD. The snapshot is frozen;
+    after more edits, configure NAME --to-uncommitted takes a new one.
+
+    Use ordinary Git to edit, commit, amend, or rebase the synthetic branch. The base commit
     is the anchor and is not counted as a slide. Keep one parent per step.
     The original checkout remains untouched. Existing names or branches are
     rejected; names start with a-z and contain only lowercase letters, digits,
@@ -136,22 +191,27 @@ def start(
       git-retell start compact --from HEAD~1 --to HEAD --worktree /tmp/compact --budget 40 --context 0
       git-retell start core --from main --to feature --worktree /tmp/core --partial
       git-retell start fresh --from-scratch --to HEAD --worktree /tmp/fresh --partial
+      git-retell start wip --to-uncommitted --worktree /tmp/wip
 
     In the new worktree, edit files and commit explanatory steps until the tree
     matches the target. Use Git amend/rebase to revise steps and validate to
     inspect progress. No commits are synthesized automatically.
     """
+    if base is None and not from_scratch and (to_uncommitted or to_staged):
+        base = "HEAD"
     if (base is None) == (not from_scratch):
         raise click.UsageError(
             "Pass either --from REV or --from-scratch (to build from an empty tree)."
         )
+    repo = root()
+    target, note = chosen_target(repo, target, to_uncommitted, to_staged)
     retelling = start_retelling(
-        root(), name, base, target, worktree.resolve(), budget, context, partial
+        repo, name, base, target, worktree.resolve(), budget, context, partial
     )
     scratch = " (empty tree; building from scratch)" if from_scratch else ""
     click.echo(
         f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
-        f"Base: {retelling.base}{scratch}\nTarget: {retelling.target}\n"
+        f"Base: {retelling.base}{scratch}\nTarget: {retelling.target}{note}\n"
         f"Budget: {budget} diff lines · context {context}{' · partial' if partial else ''}\n"
         f"Next: create explanatory commits, then git-retell finish {name}"
     )
@@ -537,20 +597,38 @@ def run_tests(name: str, timeout: float, as_json: bool, command: tuple[str, ...]
     default=None,
     help="Allow or forbid leaving changed files out of the retelling.",
 )
-def configure(name: str, budget: int | None, context: int | None, partial: bool | None):
-    """Print or change a retelling's saved budget, context, and partial setting.
+@target_options
+def configure(
+    name: str,
+    budget: int | None,
+    context: int | None,
+    partial: bool | None,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
+):
+    """Print or change a retelling's saved settings, or pin a new target.
 
     Settings are stored as a JSON blob at refs/retell/NAME/settings, so they
     travel with the retelling's other refs. With no options, prints them.
+
+    --to, --to-uncommitted, or --to-staged replaces the pinned target, for
+    example to take a new snapshot after more edits or to follow a rebased
+    real change. The history is then validated against the new target. The
+    base stays pinned, since the synthetic branch is anchored there.
 
     \b
     Examples:
       git-retell configure demo
       git-retell configure demo --budget 80 --context 6
       git-retell configure demo --partial
+      git-retell configure wip --to-uncommitted
     """
     repo = root()
     Retelling.load(repo, name)
+    if target is not None or to_uncommitted or to_staged:
+        target, note = chosen_target(repo, target, to_uncommitted, to_staged)
+        click.echo(f"Target: {retarget(repo, name, target).target}{note}")
     changes = {"budget": budget, "context": context, "partial": partial}
     saved = save_settings(
         repo,

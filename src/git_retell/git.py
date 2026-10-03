@@ -1,17 +1,24 @@
 """Small Git boundary; all review diffs use the same rendering settings."""
 
+import os
 import subprocess
 from pathlib import Path
 
 import click
 
 
-def git(repo: Path, *args: str, input_text: str | None = None) -> str:
+def git(
+    repo: Path,
+    *args: str,
+    input_text: str | None = None,
+    env: dict[str, str] | None = None,
+) -> str:
     result = subprocess.run(
         ["git", "--no-replace-objects", "-C", str(repo), *args],
         input=input_text.encode() if input_text is not None else None,
         capture_output=True,
         check=False,
+        env={**os.environ, **env} if env else None,
     )
     if result.returncode:
         raise click.ClickException(result.stderr.decode(errors="replace").strip())
