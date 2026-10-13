@@ -86,7 +86,7 @@ def test_web_and_test_accept_ranges(repo, tmp_path):
         cli, ["web", "--from", "main", "--no-open", "-o", str(output)]
     )
     assert result.exit_code == 0, result.output
-    assert "main..HEAD · git-retell" in output.read_text()
+    assert "main..HEAD · Git Retell" in output.read_text()
     command = [
         sys.executable,
         "-c",

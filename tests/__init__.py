@@ -1,1 +1,1 @@
-"""Tests for git-retell."""
+"""Tests for Git Retell."""

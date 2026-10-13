@@ -477,7 +477,7 @@ def page(data: dict) -> str:
         .replace(" ", "\\u2028")
         .replace(" ", "\\u2029")
     )
-    title = html.escape(f"{data['name']} · git-retell")
+    title = html.escape(f"{data['name']} · Git Retell")
     return template.replace("__TITLE__", title).replace("__DATA__", encoded)
 
 

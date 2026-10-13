@@ -90,7 +90,7 @@ def test_web_command_writes_page(repo, tmp_path):
     assert result.exit_code == 0, result.output
     assert "Wrote" in result.output
     text = output.read_text()
-    assert "<title>demo · git-retell</title>" in text and "__DATA__" not in text
+    assert "<title>demo · Git Retell</title>" in text and "__DATA__" not in text
 
 
 def test_trailers_are_dropped_but_prose_is_kept():
