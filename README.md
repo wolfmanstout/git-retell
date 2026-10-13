@@ -64,6 +64,10 @@ to fix, go back to your original conversation to make the change.
 
 A few variations you might want:
 
+- **Pull requests:** `start --pr 123` retells a GitHub pull request, fetching
+  it with the [GitHub CLI](https://cli.github.com) and naming it `pr-123`. In
+  the prompt, replace the first line with "Use git-retell to explain pull
+  request 123."
 - **Uncommitted work:** `start --to-uncommitted` (or `--to-staged`) retells
   changes you haven't committed yet.
 - **Partial retellings:** `start --partial` lets the retelling leave out files

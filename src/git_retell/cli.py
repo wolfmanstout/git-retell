@@ -1,12 +1,17 @@
 """One CLI for agents authoring histories and humans reviewing them."""
 
 import json
+import shutil
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 import click
 
 from . import checks
 from .git import git, pathspecs, root
+from .github import pull_request
 from .history import History
 from .retelling import (
     Retelling,
@@ -40,7 +45,8 @@ def cli():
     A partial retelling (start --partial) may leave some changed files out: each
     file either reaches its exact target version or stays exactly as in B. Use
     --from-scratch to build from an empty tree instead of B. To retell work you
-    have not committed, use --to-uncommitted or --to-staged.
+    have not committed, use --to-uncommitted or --to-staged. To retell a GitHub
+    pull request, pass --pr NUMBER, which needs the GitHub CLI (gh).
 
     Start creates a separate worktree at B. Author and revise steps there using
     ordinary Git. Validate checks endpoints, ancestry, and each diff's line
@@ -54,6 +60,7 @@ def cli():
     \b
     Example workflow (B and H are existing commits):
       git-retell start demo --from B --to H --worktree /tmp/demo
+      # Or, for pull request 123: git-retell start --pr 123
       # Edit files in /tmp/demo, then git add and git commit with explanations.
       git-retell validate demo --json
       git-retell finish demo
@@ -125,9 +132,33 @@ def chosen_target(
     return commit, note
 
 
+def pr_option(help_text: str):
+    return click.option("--pr", metavar="PR", help=help_text)
+
+
+def pr_endpoints(
+    repo: Path,
+    pr: str,
+    base: str | None,
+    target: str | None,
+    to_uncommitted: bool,
+    to_staged: bool,
+):
+    """The pull request's merge base and head, refusing --from and --to with --pr."""
+    if base is not None or target is not None or to_uncommitted or to_staged:
+        raise click.UsageError("--pr sets both endpoints; drop --from and --to.")
+    found = pull_request(repo, pr)
+    click.echo(f"Pull request #{found.number}: {found.title}", err=True)
+    return found
+
+
 def range_options(command):
-    """Add --from/--from-scratch and the --to options for viewing real commits."""
+    """Add --from/--from-scratch, --pr, and the --to options for viewing real commits."""
     command = target_options(command)
+    command = pr_option(
+        "With no NAME: show the commits of this GitHub pull request (a number, "
+        "URL, or branch), fetching them if needed."
+    )(command)
     command = click.option(
         "--from-scratch",
         is_flag=True,
@@ -145,19 +176,28 @@ def load_story(
     name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
 ) -> Story:
-    """A retelling by NAME, or the real commits that --from and --to select."""
-    ranged = from_scratch or to_uncommitted or to_staged
+    """A retelling by NAME, or the real commits that --from, --to, or --pr select."""
+    ranged = from_scratch or to_uncommitted or to_staged or pr is not None
     if name is not None:
         if ranged or base is not None or target is not None:
-            raise click.UsageError("Pass a retelling NAME or --from/--to, not both.")
+            raise click.UsageError(
+                "Pass a retelling NAME or --from/--to/--pr, not both."
+            )
         return Retelling.load(root(), name)
+    if pr is not None:
+        repo = root()
+        found = pr_endpoints(repo, pr, base, target, to_uncommitted, to_staged)
+        since = None if from_scratch else found.base
+        return History.load(repo, since, found.head, f"pull request #{found.number}")
     if (base is None) == (not from_scratch):
         raise click.UsageError(
-            "Pass a retelling NAME, or --from REV or --from-scratch to show real commits."
+            "Pass a retelling NAME, or --from REV, --from-scratch, or --pr to show "
+            "real commits."
         )
     repo = root()
     end = target or (
@@ -167,8 +207,33 @@ def load_story(
     return History.load(repo, base, target, f"{base}..{end}" if base else end)
 
 
+def worktree_option(command):
+    return click.option(
+        "--worktree",
+        type=click.Path(path_type=Path),
+        help="New authoring directory. Defaults to a new temporary directory.",
+    )(command)
+
+
+T = TypeVar("T")
+
+
+def authoring(
+    worktree: Path | None, name: str, create: Callable[[Path], T]
+) -> tuple[T, Path]:
+    """Run CREATE on WORKTREE, or on a new temporary directory removed on failure."""
+    if worktree is not None:
+        return create(worktree.resolve()), worktree.resolve()
+    path = Path(tempfile.mkdtemp(prefix=f"git-retell-{name}-")).resolve()
+    try:
+        return create(path), path
+    except BaseException:
+        shutil.rmtree(path, ignore_errors=True)
+        raise
+
+
 @cli.command()
-@click.argument("name")
+@click.argument("name", required=False)
 @click.option(
     "--from",
     "base",
@@ -180,13 +245,12 @@ def load_story(
     is_flag=True,
     help="Start from a new empty-tree commit instead of a real base.",
 )
-@target_options
-@click.option(
-    "--worktree",
-    required=True,
-    type=click.Path(path_type=Path),
-    help="New authoring directory.",
+@pr_option(
+    "Retell this GitHub pull request (a number, URL, or branch): its merge "
+    "base is B and its head is H. NAME defaults to pr-NUMBER."
 )
+@target_options
+@worktree_option
 @click.option(
     "--budget",
     default=60,
@@ -207,13 +271,14 @@ def load_story(
     help="Allow leaving some changed files out of the retelling.",
 )
 def start(
-    name: str,
+    name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
-    worktree: Path,
+    worktree: Path | None,
     budget: int,
     context: int,
     partial: bool,
@@ -243,6 +308,16 @@ def start(
     empty tree, so the retelling builds every file from nothing. This pairs
     well with --partial.
 
+    --pr takes both endpoints from a GitHub pull request using the GitHub CLI
+    (gh): H is the PR's head and B is its merge base with the base branch, so
+    the retelling covers exactly the changes GitHub shows for the PR. Missing
+    commits are fetched without changing any local branch. Combine it with
+    --from-scratch to build from an empty tree instead; --from and --to are
+    refused. To follow later pushes, run configure NAME --pr NUMBER.
+
+    Without --worktree, the worktree is a new temporary directory, printed
+    after "Author in:".
+
     With --partial, the retelling may leave out some of the files that differ
     between B and H, such as lock files, generated code, or tests. It is all or
     nothing per file: every file the history changes must end at exactly its
@@ -251,6 +326,7 @@ def start(
 
     \b
     Examples:
+      git-retell start --pr 123
       git-retell start demo --from main --to feature --worktree /tmp/demo
       git-retell start branch --from main --worktree /tmp/branch
       git-retell start compact --from HEAD~1 --to HEAD --worktree /tmp/compact --budget 40 --context 0
@@ -262,20 +338,34 @@ def start(
     matches the target. Use Git amend/rebase to revise steps and validate to
     inspect progress. No commits are synthesized automatically.
     """
-    if base is None and not from_scratch and (to_uncommitted or to_staged):
-        base = "HEAD"
-    if (base is None) == (not from_scratch):
-        raise click.UsageError(
-            "Pass either --from REV or --from-scratch (to build from an empty tree)."
-        )
-    repo = root()
-    target, note = chosen_target(repo, target, to_uncommitted, to_staged)
-    retelling = start_retelling(
-        repo, name, base, target, worktree.resolve(), budget, context, partial
+    if pr is not None:
+        repo = root()
+        found = pr_endpoints(repo, pr, base, target, to_uncommitted, to_staged)
+        name = name or f"pr-{found.number}"
+        base = None if from_scratch else found.base
+        target, note = found.head, f" (head of pull request #{found.number})"
+    else:
+        if name is None:
+            raise click.UsageError("Pass a NAME, or --pr to name it pr-NUMBER.")
+        if base is None and not from_scratch and (to_uncommitted or to_staged):
+            base = "HEAD"
+        if (base is None) == (not from_scratch):
+            raise click.UsageError(
+                "Pass --from REV, --from-scratch (to build from an empty tree), "
+                "or --pr."
+            )
+        repo = root()
+        target, note = chosen_target(repo, target, to_uncommitted, to_staged)
+    retelling, path = authoring(
+        worktree,
+        name,
+        lambda path: start_retelling(
+            repo, name, base, target, path, budget, context, partial
+        ),
     )
     scratch = " (empty tree; building from scratch)" if from_scratch else ""
     click.echo(
-        f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
+        f"SYNTHETIC retelling: retell/{name}\nAuthor in: {path}\n"
         f"Base: {retelling.base}{scratch}\nTarget: {retelling.target}{note}\n"
         f"Budget: {budget} diff lines · context {context}{' · partial' if partial else ''}\n"
         f"Next: create explanatory commits, then git-retell finish {name}"
@@ -302,13 +392,8 @@ def file_filters(command):
 
 @cli.command()
 @click.argument("name")
-@click.option(
-    "--worktree",
-    required=True,
-    type=click.Path(path_type=Path),
-    help="New authoring directory.",
-)
-def resume(name: str, worktree: Path):
+@worktree_option
+def resume(name: str, worktree: Path | None):
     """Check out branch retell/NAME in a new worktree to revise a retelling.
 
     Use after finish (or after removing the worktree) to amend, rebase, or add
@@ -316,11 +401,15 @@ def resume(name: str, worktree: Path):
 
     \b
     Examples:
+      git-retell resume demo
       git-retell resume demo --worktree /tmp/demo
     """
-    retelling = resume_retelling(root(), name, worktree.resolve())
+    repo = root()
+    retelling, path = authoring(
+        worktree, name, lambda path: resume_retelling(repo, name, path)
+    )
     click.echo(
-        f"SYNTHETIC retelling: retell/{name}\nAuthor in: {worktree.resolve()}\n"
+        f"SYNTHETIC retelling: retell/{name}\nAuthor in: {path}\n"
         f"Steps: {len(retelling.commits())}\n"
         f"Next: revise with ordinary Git, then git-retell finish {name}"
     )
@@ -454,6 +543,7 @@ def show(
     name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
@@ -478,7 +568,8 @@ def show(
     each against the commit before it, like git log REV..HEAD. A branch thus
     starts where it forked even if REV moved on. --to-uncommitted or
     --to-staged adds a final snapshot of work in progress on top of HEAD.
-    Real commits have no budget or validation.
+    --pr NUMBER instead shows a GitHub pull request's commits since its merge
+    base, fetching them if needed. Real commits have no budget or validation.
 
     \b
     Examples:
@@ -488,7 +579,9 @@ def show(
       git-retell show demo --all --exclude tests/ --exclude '*.lock'
       git-retell show --from main --all
     """
-    retelling = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
+    retelling = load_story(
+        name, base, from_scratch, pr, target, to_uncommitted, to_staged
+    )
     commits = retelling.commits()
     if not commits or (not all_steps and step > len(commits)):
         raise click.ClickException(f"Choose a step between 1 and {len(commits)}.")
@@ -511,6 +604,7 @@ def view(
     name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
@@ -539,7 +633,8 @@ def view(
     each against the commit before it, like git log REV..HEAD. A branch thus
     starts where it forked even if REV moved on. --to-uncommitted or
     --to-staged adds a final snapshot of work in progress on top of HEAD.
-    Real commits have no budget or validation.
+    --pr NUMBER instead shows a GitHub pull request's commits since its merge
+    base, fetching them if needed. Real commits have no budget or validation.
 
     \b
     Examples:
@@ -551,7 +646,7 @@ def view(
     A terminal is required. For a pipe, file, or pager, use show instead.
     """
     view_retelling(
-        load_story(name, base, from_scratch, target, to_uncommitted, to_staged),
+        load_story(name, base, from_scratch, pr, target, to_uncommitted, to_staged),
         context=context,
         pathspecs=pathspecs(include, exclude),
     )
@@ -583,6 +678,7 @@ def web(
     name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
@@ -618,7 +714,8 @@ def web(
     each against the commit before it, like git log REV..HEAD. A branch thus
     starts where it forked even if REV moved on. --to-uncommitted or
     --to-staged adds a final snapshot of work in progress on top of HEAD.
-    Real commits have no budget or validation.
+    --pr NUMBER instead shows a GitHub pull request's commits since its merge
+    base, fetching them if needed. Real commits have no budget or validation.
     The page then shows each commit's author and date, and its line-lifetime
     marks show code that a later commit rewrote or removed.
 
@@ -628,8 +725,9 @@ def web(
       git-retell web demo --no-open -o demo.html
       git-retell web demo --exclude tests/ --exclude '*.lock'
       git-retell web --from main
+      git-retell web --pr 123
     """
-    story = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
+    story = load_story(name, base, from_scratch, pr, target, to_uncommitted, to_staged)
     if len(story.commits()) > LARGE_HISTORY:
         click.echo(
             f"Embedding {len(story.commits())} commits; the page may be large.",
@@ -670,6 +768,7 @@ def run_tests(
     name: str | None,
     base: str | None,
     from_scratch: bool,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
@@ -685,8 +784,9 @@ def run_tests(
       git-retell test demo --json -- npm test
       git-retell test --from main -- pytest
 
-    With --from REV (or --from-scratch) instead of NAME, runs COMMAND on each
-    real commit that show --from REV would list, with the same --to options.
+    With --from REV (or --from-scratch or --pr) instead of NAME, runs COMMAND
+    on each real commit that show --from REV would list, with the same --to
+    options.
 
     Use -- to separate this tool's options from the command's arguments.
     Each step starts in its own checkout, so install dependencies as needed.
@@ -697,12 +797,14 @@ def run_tests(
     steps, or everything with --json. Exit 1 means a step failed; failures do
     not affect validate. Each worktree is removed after its run.
     """
-    if name is not None and (base is not None or from_scratch):
+    if name is not None and (base is not None or from_scratch or pr is not None):
         # Without NAME, the first word of COMMAND fills that argument.
         name, command = None, (name, *command)
     if not command:
         raise click.UsageError("Missing COMMAND to run on every step.")
-    retelling = load_story(name, base, from_scratch, target, to_uncommitted, to_staged)
+    retelling = load_story(
+        name, base, from_scratch, pr, target, to_uncommitted, to_staged
+    )
     results = checks.check(retelling, command, timeout)
     if as_json:
         click.echo(json.dumps(results, indent=2))
@@ -740,11 +842,13 @@ def run_tests(
     help="Allow or forbid leaving changed files out of the retelling.",
 )
 @target_options
+@pr_option("Pin this GitHub pull request's current head as the target.")
 def configure(
     name: str,
     budget: int | None,
     context: int | None,
     partial: bool | None,
+    pr: str | None,
     target: str | None,
     to_uncommitted: bool,
     to_staged: bool,
@@ -756,8 +860,10 @@ def configure(
 
     --to, --to-uncommitted, or --to-staged replaces the pinned target, for
     example to take a new snapshot after more edits or to follow a rebased
-    real change. The history is then validated against the new target. The
-    base stays pinned, since the synthetic branch is anchored there.
+    real change. --pr NUMBER pins the pull request's current head, fetching it
+    if needed, to follow pushes made after start --pr. The history is then
+    validated against the new target. The base stays pinned, since the
+    synthetic branch is anchored there.
 
     \b
     Examples:
@@ -765,10 +871,14 @@ def configure(
       git-retell configure demo --budget 80 --context 6
       git-retell configure demo --partial
       git-retell configure wip --to-uncommitted
+      git-retell configure pr-123 --pr 123
     """
     repo = root()
     Retelling.load(repo, name)
-    if target is not None or to_uncommitted or to_staged:
+    if pr is not None:
+        found = pr_endpoints(repo, pr, None, target, to_uncommitted, to_staged)
+        click.echo(f"Target: {retarget(repo, name, found.head).target}")
+    elif target is not None or to_uncommitted or to_staged:
         target, note = chosen_target(
             repo, target, to_uncommitted, to_staged, default=None
         )
