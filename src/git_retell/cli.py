@@ -10,9 +10,9 @@ from typing import TypeVar
 import click
 
 from . import checks
+from .commit_range import CommitRange
 from .git import git, pathspecs, root
 from .github import pull_request
-from .history import History
 from .retelling import (
     Retelling,
     inspect,
@@ -193,7 +193,9 @@ def load_story(
         repo = root()
         found = pr_endpoints(repo, pr, base, target, to_uncommitted, to_staged)
         since = None if from_scratch else found.base
-        return History.load(repo, since, found.head, f"pull request #{found.number}")
+        return CommitRange.load(
+            repo, since, found.head, f"pull request #{found.number}"
+        )
     if (base is None) == (not from_scratch):
         raise click.UsageError(
             "Pass a retelling NAME, or --from REV, --from-scratch, or --pr to show "
@@ -204,7 +206,7 @@ def load_story(
         "uncommitted" if to_uncommitted else "staged" if to_staged else "HEAD"
     )
     target, _ = chosen_target(repo, target, to_uncommitted, to_staged)
-    return History.load(repo, base, target, f"{base}..{end}" if base else end)
+    return CommitRange.load(repo, base, target, f"{base}..{end}" if base else end)
 
 
 def worktree_option(command):
@@ -579,16 +581,14 @@ def show(
       git-retell show demo --all --exclude tests/ --exclude '*.lock'
       git-retell show --from main --all
     """
-    retelling = load_story(
-        name, base, from_scratch, pr, target, to_uncommitted, to_staged
-    )
-    commits = retelling.commits()
+    story = load_story(name, base, from_scratch, pr, target, to_uncommitted, to_staged)
+    commits = story.commits()
     if not commits or (not all_steps and step > len(commits)):
         raise click.ClickException(f"Choose a step between 1 and {len(commits)}.")
     specs = pathspecs(include, exclude)
-    indices = selected_steps(retelling, specs) if all_steps else [step - 1]
+    indices = selected_steps(story, specs) if all_steps else [step - 1]
     for index in indices:
-        click.echo(slide(retelling, commits, index, context=context, pathspecs=specs))
+        click.echo(slide(story, commits, index, context=context, pathspecs=specs))
 
 
 @cli.command()
@@ -802,15 +802,13 @@ def run_tests(
         name, command = None, (name, *command)
     if not command:
         raise click.UsageError("Missing COMMAND to run on every step.")
-    retelling = load_story(
-        name, base, from_scratch, pr, target, to_uncommitted, to_staged
-    )
-    results = checks.check(retelling, command, timeout)
+    story = load_story(name, base, from_scratch, pr, target, to_uncommitted, to_staged)
+    results = checks.check(story, command, timeout)
     if as_json:
         click.echo(json.dumps(results, indent=2))
     else:
         for item in results:
-            subject = retelling.message(item["commit"]).split("\n")[0]
+            subject = story.message(item["commit"]).split("\n")[0]
             status = (
                 "pass"
                 if item["passed"]

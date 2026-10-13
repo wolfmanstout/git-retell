@@ -9,7 +9,7 @@ from .git import empty_tree, git, resolve
 
 
 @dataclass
-class History:
+class CommitRange:
     """The first-parent chain of commits reachable from a tip but not from a base.
 
     Each commit is a step against the one before it. The diff base is the
@@ -30,7 +30,9 @@ class History:
         return self.tip
 
     @classmethod
-    def load(cls, repo: Path, base: str | None, target: str, label: str) -> "History":
+    def load(
+        cls, repo: Path, base: str | None, target: str, label: str
+    ) -> "CommitRange":
         tip = resolve(repo, target)
         since = [] if base is None else [f"^{resolve(repo, base)}"]
         steps = git(

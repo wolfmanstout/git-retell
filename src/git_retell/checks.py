@@ -10,17 +10,17 @@ from .git import git
 from .viewer import Story
 
 
-def check(retelling: Story, command: tuple[str, ...], timeout: float) -> list[dict]:
+def check(story: Story, command: tuple[str, ...], timeout: float) -> list[dict]:
     results = []
-    for number, commit in enumerate(retelling.commits(), 1):
+    for number, commit in enumerate(story.commits(), 1):
         with tempfile.TemporaryDirectory(prefix="git-retell-test-") as directory:
             path = Path(directory) / "tree"
-            git(retelling.repo, "worktree", "add", "--detach", str(path), commit)
+            git(story.repo, "worktree", "add", "--detach", str(path), commit)
             try:
                 result = run_check(path, command, timeout)
                 results.append({"step": number, "commit": commit, **result})
             finally:
-                git(retelling.repo, "worktree", "remove", "--force", str(path))
+                git(story.repo, "worktree", "remove", "--force", str(path))
     return results
 
 

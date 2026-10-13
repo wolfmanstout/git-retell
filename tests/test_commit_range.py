@@ -4,8 +4,8 @@ import sys
 from click.testing import CliRunner
 
 from git_retell.cli import cli
+from git_retell.commit_range import CommitRange
 from git_retell.git import empty_tree, git, resolve
-from git_retell.history import History
 from git_retell.web import payload
 
 from .helpers import commit
@@ -28,8 +28,8 @@ def feature_branch(repo):
 
 def test_history_starts_where_the_branch_forked(repo):
     fork, first, second = feature_branch(repo)
-    history = History.load(repo, "main", "feature", "main..feature")
-    assert history.base == fork and history.commits() == [first, second]
+    commit_range = CommitRange.load(repo, "main", "feature", "main..feature")
+    assert commit_range.base == fork and commit_range.commits() == [first, second]
     result = CliRunner().invoke(cli, ["show", "--from", "main", "--all"])
     assert result.exit_code == 0, result.output
     headings = [
@@ -45,9 +45,9 @@ def test_history_starts_where_the_branch_forked(repo):
 def test_history_follows_first_parents_through_merges(repo):
     fork, first, second = feature_branch(repo)
     git(repo, "merge", "--no-ff", "-m", "Merge main", "main")
-    history = History.load(repo, fork, "HEAD", "range")
+    commit_range = CommitRange.load(repo, fork, "HEAD", "range")
     merge = resolve(repo, "HEAD")
-    assert history.commits() == [first, second, merge]
+    assert commit_range.commits() == [first, second, merge]
     result = CliRunner().invoke(cli, ["show", "--from", "main", "--all"])
     # Every commit of main is excluded, so the merge shows only its own slide.
     headings = [
@@ -57,15 +57,15 @@ def test_history_follows_first_parents_through_merges(repo):
 
 
 def test_history_from_scratch_starts_at_the_empty_tree(repo):
-    history = History.load(repo, None, "HEAD", "HEAD")
-    assert history.base == empty_tree(repo) and len(history.commits()) == 1
+    commit_range = CommitRange.load(repo, None, "HEAD", "HEAD")
+    assert commit_range.base == empty_tree(repo) and len(commit_range.commits()) == 1
     result = CliRunner().invoke(cli, ["show", "--from-scratch"])
     assert result.exit_code == 0 and "+before" in result.output
 
 
 def test_history_page_marks_rework_without_validation(repo):
     feature_branch(repo)
-    data = payload(History.load(repo, "main", "feature", "main..feature"))
+    data = payload(CommitRange.load(repo, "main", "feature", "main..feature"))
     assert (
         data["history"] and data["budget"] is None and data["name"] == "main..feature"
     )

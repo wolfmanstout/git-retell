@@ -6,12 +6,12 @@ import unicodedata
 
 import click
 
+from .commit_range import CommitRange
 from .git import diff
-from .history import History
 from .retelling import Retelling, inspect
 
 # Viewers show a retelling's synthetic steps or a range of real commits.
-Story = Retelling | History
+Story = Retelling | CommitRange
 
 
 def safe_text(text: str) -> str:
@@ -25,26 +25,26 @@ def safe_text(text: str) -> str:
 
 
 def slide(
-    retelling: Story,
+    story: Story,
     commits: list[str],
     index: int,
     *,
     context: int | None = None,
     pathspecs: list[str] | None = None,
 ) -> str:
-    context = retelling.context if context is None else context
+    context = story.context if context is None else context
     commit = commits[index]
-    previous = retelling.base if index == 0 else commits[index - 1]
+    previous = story.base if index == 0 else commits[index - 1]
     position = f"{index + 1}/{len(commits)} · {commit[:8]}"
-    if isinstance(retelling, History):
-        author, date = retelling.byline(commit)
-        heading = f"History · {retelling.label} · {position} · {author} · {date}"
+    if isinstance(story, CommitRange):
+        author, date = story.byline(commit)
+        heading = f"History · {story.label} · {position} · {author} · {date}"
     else:
-        kind = "partial retelling" if retelling.partial else "retelling"
-        heading = f"SYNTHETIC explanatory {kind} · {retelling.name} · {position}"
-    message = safe_text(retelling.message(commit))
+        kind = "partial retelling" if story.partial else "retelling"
+        heading = f"SYNTHETIC explanatory {kind} · {story.name} · {position}"
+    message = safe_text(story.message(commit))
     patch = safe_text(
-        diff(retelling.repo, previous, commit, context=context, pathspecs=pathspecs)
+        diff(story.repo, previous, commit, context=context, pathspecs=pathspecs)
     )
     if pathspecs is not None:
         heading += " · filtered"
@@ -52,16 +52,16 @@ def slide(
     return f"{heading}\n\n{message}\n\n{patch}"
 
 
-def selected_steps(retelling: Story, pathspecs: list[str] | None) -> list[int]:
+def selected_steps(story: Story, pathspecs: list[str] | None) -> list[int]:
     """Indices of the steps that change any selected file."""
-    commits = retelling.commits()
+    commits = story.commits()
     if pathspecs is None:
         return list(range(len(commits)))
-    parents = [retelling.base, *commits[:-1]]
+    parents = [story.base, *commits[:-1]]
     return [
         index
         for index, (previous, commit) in enumerate(zip(parents, commits))
-        if diff(retelling.repo, previous, commit, numstat=True, pathspecs=pathspecs)
+        if diff(story.repo, previous, commit, numstat=True, pathspecs=pathspecs)
     ]
 
 
@@ -123,7 +123,7 @@ def page(
 
 
 def view(
-    retelling: Story,
+    story: Story,
     context: int | None = None,
     pathspecs: list[str] | None = None,
 ) -> None:
@@ -131,32 +131,30 @@ def view(
         raise click.ClickException(
             "view needs a terminal. Use show --all for plain output."
         )
-    commits = retelling.commits()
+    commits = story.commits()
     if not commits:
         raise click.ClickException(
             "No explanatory steps yet. Create commits in the authoring worktree."
         )
     # Filtered views skip steps that change none of the selected files.
-    steps = selected_steps(retelling, pathspecs)
+    steps = selected_steps(story, pathspecs)
     if not steps:
         raise click.ClickException("No step changes the selected files.")
-    initial_context = retelling.context if context is None else context
+    initial_context = story.context if context is None else context
     position, context, offset = 0, initial_context, 0
     status = ""
     validated_context = None
     cached = None
     content = ""
     while True:
-        if validated_context != context and isinstance(retelling, Retelling):
+        if validated_context != context and isinstance(story, Retelling):
             status = (
-                "VALID " if inspect(retelling, context=context)["valid"] else "INVALID "
+                "VALID " if inspect(story, context=context)["valid"] else "INVALID "
             )
             validated_context = context
         index = steps[position]
         if cached != (index, context):
-            content = slide(
-                retelling, commits, index, context=context, pathspecs=pathspecs
-            )
+            content = slide(story, commits, index, context=context, pathspecs=pathspecs)
             cached = (index, context)
         terminal = shutil.get_terminal_size()
         label = f"{status}{index + 1}/{len(commits)} U{context}"
