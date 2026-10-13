@@ -19,11 +19,11 @@ def fake_pull_request(repo, tmp_path, monkeypatch):
     """
     upstream = tmp_path / "upstream"
     git(tmp_path, "clone", "--quiet", str(repo), str(upstream))
+    git(upstream, "switch", "--quiet", "-c", "feature")
     (upstream / "code.txt").write_text("feature\n")
     head = commit(upstream, "Feature")
     git(upstream, "update-ref", "refs/pull/7/head", head)
-    git(upstream, "checkout", "--quiet", "main")
-    git(upstream, "reset", "--quiet", "--hard", "HEAD~1")
+    git(upstream, "switch", "--quiet", "main")
     (upstream / "other.txt").write_text("moved on\n")
     main = commit(upstream, "Main moved on")
     git(repo, "config", f"url.{upstream}.insteadOf", "https://github.com/o/r.git")
