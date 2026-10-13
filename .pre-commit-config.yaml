@@ -17,3 +17,5 @@ repos:
 
 ci:
   autoupdate_schedule: monthly
+  # Needs the project's dependencies, so it runs in the test workflow instead.
+  skip: [basedpyright]

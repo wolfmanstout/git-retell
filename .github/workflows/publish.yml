@@ -24,6 +24,8 @@ jobs:
       run: uv sync --locked --dev
     - name: Run tests
       run: uv run --no-sources pytest
+    - name: Type check
+      run: uv run --no-sources basedpyright
   deploy:
     runs-on: ubuntu-latest
     needs: [test]

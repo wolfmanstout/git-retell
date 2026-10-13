@@ -36,6 +36,4 @@ ignore = ["BLE001", "S110"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
-venvPath = "."
-venv = ".venv"
 pythonVersion = "3.11"
