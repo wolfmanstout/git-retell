@@ -37,6 +37,10 @@ project.
 
 Run tests with `uv run pytest`. Pre-commit runs ruff and basedpyright.
 
+During development, run `uv run git-retell ...` to use the checkout's code.
+After committing to main, run `uv tool install . --reinstall` to refresh the
+system-wide install.
+
 When retelling a change to this repository, don't run `uv run git-retell` inside
 the authoring worktree: it would run that step's partial code, not a working
 tool. Run the installed `git-retell`, or `uv run` from the main checkout.
