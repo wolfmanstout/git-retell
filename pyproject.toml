@@ -27,7 +27,7 @@ git-retell = "git_retell.cli:cli"
 
 [dependency-groups]
 dev = [
-    "basedpyright==1.39.3",
+    "basedpyright==1.40.2",
     "pytest",
 ]
 
