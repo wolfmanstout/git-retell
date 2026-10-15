@@ -372,7 +372,9 @@ footer.seek {
   opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10;
 }
 .help.show { opacity: 1; pointer-events: auto; }
-.help > div { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow); }
+.help > div { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow);
+  /* Even while invisible it takes up layout, so it must never be wider than the screen. */
+  box-sizing: border-box; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto; }
 .help h2 { margin: 0 0 12px; font-size: 15px; }
 .help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
 .help dt { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
@@ -382,15 +384,20 @@ footer.seek {
 kbd { font: 11px ui-monospace, Menlo, monospace; }
 
 @media (max-width: 860px) {
+  /* The document scrolls instead of a fixed-height grid: a sticky grid item
+     can't leave its own row, so the footer would scroll away. */
+  html, body { height: auto; }
+  body { display: block; overflow: visible; }
   /* minmax(0, ...) keeps wide content from widening the page past the screen. */
-  body { overflow: auto; grid-template-columns: minmax(0, 1fr); }
   main { grid-template-columns: minmax(0, 1fr); }
   aside.story { border-right: 0; border-bottom: 1px solid var(--rule-soft); padding: 18px 16px; overflow: visible; }
   section.stage { padding: 16px 12px 30vh; overflow: visible; }
   header.bar { padding: 8px 16px; flex-wrap: wrap; }
   .controls { flex-wrap: wrap; }
   .btn { white-space: nowrap; }
-  footer.seek { position: sticky; bottom: 0; padding: 6px 16px 8px; }
+  footer.seek { position: sticky; bottom: 0; padding: 6px 16px 8px; transition: transform .25s ease; }
+  /* Tucked away while scrolling down to read; scrolling up brings it back. */
+  footer.seek.tucked { transform: translateY(100%); }
   .ruler { display: none; }
 }
 </style>
@@ -1150,7 +1157,8 @@ function layoutFlags() {
   const labels = $("labels"), marks = $("marks");
   labels.replaceChildren();
   marks.replaceChildren();
-  const width = labels.clientWidth || 800;
+  // Measure the markers' row: narrow screens hide the labels.
+  const width = marks.clientWidth || 800;
   const size = Math.max(3, Math.min(7, width / D.slides.length - 2));
   marks.style.setProperty("--s", size + "px");
   const lanes = [[], []];
@@ -1281,8 +1289,28 @@ const tl = $("timeline");
 let dragging = false;
 tl.addEventListener("pointerdown", (e) => { dragging = true; tl.setPointerCapture(e.pointerId); goto(nearestShown(stepAt(e.clientX))); });
 tl.addEventListener("pointermove", (e) => { const i = nearestShown(stepAt(e.clientX)); showHover(i); if (dragging) goto(i); });
-tl.addEventListener("pointerup", () => { dragging = false; });
-tl.addEventListener("pointerleave", () => $("hover").classList.remove("show"));
+// Touch has no hover, so the tooltip lasts only while a finger scrubs. Phones
+// may cancel a press instead of ending it, and taps elsewhere must dismiss it.
+const hideHover = () => $("hover").classList.remove("show");
+const release = (e) => { dragging = false; if (e.pointerType !== "mouse") hideHover(); };
+tl.addEventListener("pointerup", release);
+tl.addEventListener("pointercancel", release);
+tl.addEventListener("pointerleave", hideHover);
+document.addEventListener("pointerdown", (e) => { if (!tl.contains(e.target)) hideHover(); });
+
+// On narrow screens the seek bar would cover much of the code, so it tucks
+// away while scrolling down and returns on scrolling up or at either end.
+const seek = document.querySelector("footer.seek"), narrow = matchMedia("(max-width: 860px)");
+let lastY = scrollY;
+addEventListener("scroll", () => {
+  const y = scrollY, end = document.documentElement.scrollHeight - innerHeight;
+  if (Math.abs(y - lastY) < 8 && y > 0 && y < end) return;
+  const tuck = narrow.matches && !dragging && y > lastY && y > 0 && y < end - 2;
+  seek.classList.toggle("tucked", tuck);
+  if (tuck) hideHover();
+  lastY = y;
+}, { passive: true });
+narrow.addEventListener("change", () => seek.classList.remove("tucked"));
 addEventListener("resize", () => { layoutFlags(); closePeek(); });
 
 // ---------- Peek and jump ----------
