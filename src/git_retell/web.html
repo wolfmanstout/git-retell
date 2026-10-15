@@ -111,6 +111,7 @@ header.bar {
   height: 28px; min-width: 28px; padding: 0 9px; cursor: pointer; color: var(--muted);
   font-size: 12.5px; transition: color .15s, border-color .15s, background .15s;
 }
+a.btn:not([hidden]) { display: inline-flex; align-items: center; text-decoration: none; }
 .btn:hover { color: var(--text); border-color: var(--faint); }
 .btn.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: var(--accent-soft); }
 .ctx-readout { font-size: 12px; color: var(--muted); min-width: 34px; text-align: center; }
@@ -381,11 +382,14 @@ footer.seek {
 kbd { font: 11px ui-monospace, Menlo, monospace; }
 
 @media (max-width: 860px) {
-  body { overflow: auto; }
-  main { grid-template-columns: 1fr; }
+  /* minmax(0, ...) keeps wide content from widening the page past the screen. */
+  body { overflow: auto; grid-template-columns: minmax(0, 1fr); }
+  main { grid-template-columns: minmax(0, 1fr); }
   aside.story { border-right: 0; border-bottom: 1px solid var(--rule-soft); padding: 18px 16px; overflow: visible; }
   section.stage { padding: 16px 12px 30vh; overflow: visible; }
   header.bar { padding: 8px 16px; flex-wrap: wrap; }
+  .controls { flex-wrap: wrap; }
+  .btn { white-space: nowrap; }
   footer.seek { position: sticky; bottom: 0; padding: 6px 16px 8px; }
   .ruler { display: none; }
 }
@@ -405,6 +409,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <button class="btn" id="more" title="More context (+)">+</button>
     <button class="btn" id="full" title="Whole files (f)">Whole files</button>
     <button class="btn" id="filesbtn" title="Choose files (/)">Files</button>
+    <a class="btn" id="download" hidden title="Download this page as a single HTML file">Download</a>
     <button class="btn" id="theme" title="Theme (t)">◐</button>
     <button class="btn" id="helpbtn" title="Keys (?)">?</button>
   </div>
@@ -1258,6 +1263,12 @@ $("full").onclick = () => setContext(() => { state.full = !state.full; });
 $("helpbtn").onclick = () => $("help").classList.toggle("show");
 $("help").onclick = () => $("help").classList.remove("show");
 $("theme").onclick = toggleTheme;
+// Only `web --serve` sets this; a saved copy has nowhere to download from.
+if (D.download) {
+  $("download").href = "download";
+  $("download").download = D.download;
+  $("download").hidden = false;
+}
 
 function toggleTheme() {
   const root = document.documentElement;

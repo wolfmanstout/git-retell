@@ -3,6 +3,7 @@
 import json
 import shutil
 import tempfile
+import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
@@ -26,6 +27,7 @@ from .retelling import delete as delete_retelling
 from .retelling import finish as finish_retelling
 from .retelling import resume as resume_retelling
 from .retelling import start as start_retelling
+from .serve import serve as serve_page
 from .viewer import Story, selected_steps, slide
 from .viewer import view as view_retelling
 from .web import web as web_retelling
@@ -673,6 +675,20 @@ def view(
     show_default=True,
     help="Open the page in the default browser.",
 )
+@click.option(
+    "--serve",
+    is_flag=True,
+    help="Also serve the page over HTTP until interrupted.",
+)
+@click.option(
+    "--host",
+    help="With --serve: the address to listen on.  [default: 127.0.0.1]",
+)
+@click.option(
+    "--port",
+    type=click.IntRange(0, 65535),
+    help="With --serve: the port to listen on.  [default: any free port]",
+)
 @file_filters
 def web(
     name: str | None,
@@ -685,6 +701,9 @@ def web(
     context: int | None,
     output: Path | None,
     open_browser: bool,
+    serve: bool,
+    host: str | None,
+    port: int | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
 ):
@@ -709,6 +728,16 @@ def web(
     The page embeds every file version it shows, needs no server or network,
     and can be shared as a single file. It is a snapshot; rerun after editing.
 
+    --serve also serves the page over HTTP until interrupted, so another
+    device, such as a phone, can open it. It prints a URL containing a random
+    token; the page answers only there, so anyone with the URL can view it.
+    The served page adds a Download button that saves the single file. It
+    listens on 127.0.0.1 unless --host says otherwise (0.0.0.0 for every
+    interface). Plain HTTP sends the token unencrypted, so from other devices
+    prefer an encrypted tunnel to --port, such as Tailscale (tailscale serve
+    PORT) or ngrok (ngrok http PORT, ideally with --oauth or --basic-auth),
+    and open the tunnel's address followed by the printed URL's path.
+
     With --from REV (or --from-scratch) instead of NAME, shows real commits:
     the first-parent chain reachable from --to (default HEAD) but not from REV,
     each against the commit before it, like git log REV..HEAD. A branch thus
@@ -724,23 +753,24 @@ def web(
       git-retell web demo
       git-retell web demo --no-open -o demo.html
       git-retell web demo --exclude tests/ --exclude '*.lock'
+      git-retell web demo --serve --no-open --port 8000
       git-retell web --from main
       git-retell web --pr 123
     """
+    if not serve and (host is not None or port is not None):
+        raise click.UsageError("--host and --port require --serve.")
     story = load_story(name, base, from_scratch, pr, target, to_uncommitted, to_staged)
     if len(story.commits()) > LARGE_HISTORY:
         click.echo(
             f"Embedding {len(story.commits())} commits; the page may be large.",
             err=True,
         )
-    path = web_retelling(
-        story,
-        output,
-        open_browser,
-        context,
-        pathspecs(include, exclude),
-    )
+    path, data = web_retelling(story, output, context, pathspecs(include, exclude))
     click.echo(f"Wrote {path}")
+    if serve:
+        serve_page(path, data, host or "127.0.0.1", port or 0, open_browser)
+    elif open_browser:
+        webbrowser.open(path.resolve().as_uri())
 
 
 # Pages for longer histories can grow large, since they embed every version.

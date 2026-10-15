@@ -79,7 +79,9 @@ A few variations you might want:
   every step.
 
 The web viewer writes a single self-contained HTML file, so you can share a
-retelling by sending the file (`git-retell web NAME -o NAME.html`). Run
+retelling by sending the file (`git-retell web NAME -o NAME.html`). To view it
+from your phone, `git-retell web NAME --serve` serves it at a private URL;
+`web --help` explains reaching that URL through Tailscale or ngrok. Run
 `git-retell --help` and `git-retell COMMAND --help` for everything else.
 
 ## Development

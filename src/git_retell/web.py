@@ -13,7 +13,6 @@ import json
 import re
 import subprocess
 import tempfile
-import webbrowser
 from collections.abc import Sequence
 from importlib import resources
 from pathlib import Path
@@ -482,16 +481,14 @@ def page(data: dict) -> str:
 def web(
     story: Story,
     output: Path | None = None,
-    open_browser: bool = True,
     context: int | None = None,
     pathspecs: list[str] | None = None,
-) -> Path:
-    document = page(payload(story, context, pathspecs))
+) -> tuple[Path, dict]:
+    """Write the page and return its path and payload."""
+    data = payload(story, context, pathspecs)
     if output is None:
         directory = Path(tempfile.mkdtemp(prefix="git-retell-"))
         name = story.name if isinstance(story, Retelling) else "history"
         output = directory / f"{name}.html"
-    output.write_text(document, encoding="utf-8")
-    if open_browser:
-        webbrowser.open(output.resolve().as_uri())
-    return output
+    output.write_text(page(data), encoding="utf-8")
+    return output, data
