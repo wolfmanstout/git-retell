@@ -77,12 +77,14 @@ A few variations you might want:
   branch in the same viewer, without making a retelling.
 - **Testing each step:** `git-retell test NAME -- pytest` runs your tests on
   every step.
+- **Sharing:** `git-retell web NAME -o NAME.html` writes a single
+  self-contained file you can send to anyone.
+- **Reviewing on your phone:** have your agent serve the retelling and send you
+  the link. Add a line to the prompt such as "When done, serve it with
+  git-retell web --serve behind ngrok and give me the URL." The page has a
+  Download button, so you can share the file from your phone too.
 
-The web viewer writes a single self-contained HTML file, so you can share a
-retelling by sending the file (`git-retell web NAME -o NAME.html`). To view it
-from your phone, `git-retell web NAME --serve` serves it at a private URL;
-`web --help` explains reaching that URL through Tailscale or ngrok. Run
-`git-retell --help` and `git-retell COMMAND --help` for everything else.
+Run `git-retell --help` and `git-retell COMMAND --help` for everything else.
 
 ## Development
 
