@@ -735,8 +735,8 @@ def web(
     listens on 127.0.0.1 unless --host says otherwise (0.0.0.0 for every
     interface). Plain HTTP sends the token unencrypted, so from other devices
     prefer an encrypted tunnel to --port, such as Tailscale (tailscale serve
-    PORT) or ngrok (ngrok http PORT, ideally with --oauth or --basic-auth),
-    and open the tunnel's address followed by the printed URL's path.
+    PORT) or ngrok (ngrok http PORT), and open the tunnel's address followed
+    by the printed URL's path.
 
     With --from REV (or --from-scratch) instead of NAME, shows real commits:
     the first-parent chain reachable from --to (default HEAD) but not from REV,
