@@ -177,3 +177,23 @@ def test_initial_filter_selects_history_and_omitted_paths(repo, tmp_path):
     assert shown == ["big.lock", "code.txt", "scratch.md"]
     shown = web.payload(retelling, pathspecs=["*.lock", "*.md"])["initialShow"]
     assert shown == ["big.lock", "scratch.md"]
+
+
+def test_batched_line_matching_equals_per_file_diffs(repo, tmp_path, monkeypatch):
+    retelling, path = example(repo, tmp_path)
+    (path / "link").write_text("one\ntwo\n")
+    (path / "code.txt").write_text("a\nb\nc\n")
+    commit(path, "Add files")
+    # A type change has no single patch to reuse, so its lines are diffed alone.
+    (path / "link").unlink()
+    (path / "link").symlink_to("code.txt")
+    (path / "code.txt").write_text("a\nB\nc\n")
+    commit(path, "Make a link")
+    (path / "link").unlink()
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Finish")
+    retelling = refresh(retelling)
+    batched = web.payload(retelling)
+    assert any(f["status"] == "T" for f in batched["slides"][1]["files"])
+    monkeypatch.setattr(web, "matching_hunks", lambda repo, pairs: {})
+    assert web.payload(refresh(retelling)) == batched

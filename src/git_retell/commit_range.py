@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from .git import empty_tree, git, resolve
+from .git import Commit, empty_tree, log, resolve
 
 
 @dataclass
@@ -22,7 +22,8 @@ class CommitRange:
     label: str
     base: str
     tip: str
-    steps: list[str] = field(default_factory=list)
+    # Each step's commit details, oldest first.
+    history: dict[str, Commit] = field(repr=False)
     context: int = 3
 
     @property
@@ -35,26 +36,20 @@ class CommitRange:
     ) -> "CommitRange":
         tip = resolve(repo, target)
         since = [] if base is None else [f"^{resolve(repo, base)}"]
-        steps = git(
-            repo, "rev-list", "--first-parent", "--reverse", tip, *since, "--"
-        ).splitlines()
-        if not steps:
+        history = log(repo, tip, *since)
+        if not history:
             raise click.ClickException(f"No commits in {label}.")
-        parents = git(repo, "show", "-s", "--format=%P", steps[0]).split()
+        parents = next(iter(history.values())).parents
         start = parents[0] if parents else empty_tree(repo)
-        return cls(repo, label, start, tip, steps)
+        return cls(repo, label, start, tip, history)
 
     def commits(self) -> list[str]:
-        return self.steps
+        return list(self.history)
 
     def message(self, commit: str) -> str:
-        return git(self.repo, "show", "-s", "--format=%B", commit).strip()
+        return self.history[commit].message
 
     def byline(self, commit: str) -> tuple[str, str]:
         """The author's name and the authored date."""
-        name, _, date = (
-            git(self.repo, "show", "-s", "--format=%an%x00%as", commit)
-            .strip()
-            .partition("\0")
-        )
-        return name, date
+        found = self.history[commit]
+        return found.author, found.date

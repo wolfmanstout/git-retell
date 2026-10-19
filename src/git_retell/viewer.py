@@ -7,7 +7,7 @@ import unicodedata
 import click
 
 from .commit_range import CommitRange
-from .git import diff
+from .git import diff, diffs
 from .retelling import Retelling, inspect
 
 # Viewers show a retelling's synthetic steps or a range of real commits.
@@ -57,12 +57,9 @@ def selected_steps(story: Story, pathspecs: list[str] | None) -> list[int]:
     commits = story.commits()
     if pathspecs is None:
         return list(range(len(commits)))
-    parents = [story.base, *commits[:-1]]
-    return [
-        index
-        for index, (previous, commit) in enumerate(zip(parents, commits))
-        if diff(story.repo, previous, commit, numstat=True, pathspecs=pathspecs)
-    ]
+    pairs = list(zip([story.base, *commits[:-1]], commits))
+    numstats = diffs(story.repo, pairs, numstat=True, pathspecs=pathspecs)
+    return [index for index, numstat in enumerate(numstats) if numstat]
 
 
 def dimensions(text: str) -> tuple[int, int]:

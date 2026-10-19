@@ -4,12 +4,24 @@ import json
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import click
 
-from .git import changed_paths, churn, diff, empty_tree, git, line_count, resolve
+from .git import (
+    Commit,
+    changed_paths,
+    churn,
+    diff,
+    diffs,
+    empty_tree,
+    git,
+    line_count,
+    log,
+    resolve,
+    tally,
+)
 
 
 def validate_name(name: str) -> str:
@@ -30,6 +42,10 @@ class Retelling:
     budget: int
     context: int = 3
     partial: bool = False
+    # The endpoints are pinned at load, so the steps can be read once.
+    loaded: dict[str, Commit] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @classmethod
     def load(cls, repo: Path, name: str) -> "Retelling":
@@ -51,17 +67,16 @@ class Retelling:
             saved["partial"],
         )
 
+    def history(self) -> dict[str, Commit]:
+        if self.loaded is None:
+            self.loaded = log(self.repo, f"{self.base}..{self.tip}")
+        return self.loaded
+
     def commits(self) -> list[str]:
-        return git(
-            self.repo,
-            "rev-list",
-            "--first-parent",
-            "--reverse",
-            f"{self.base}..{self.tip}",
-        ).splitlines()
+        return list(self.history())
 
     def message(self, commit: str) -> str:
-        return git(self.repo, "show", "-s", "--format=%B", commit).strip()
+        return self.history()[commit].message
 
 
 def start(
@@ -159,14 +174,18 @@ def inspect(
     context = retelling.context if context is None else context
     issues: list[str] = []
     steps: list[dict] = []
-    previous = retelling.base
-    for number, commit in enumerate(retelling.commits(), 1):
-        parents = git(retelling.repo, "show", "-s", "--format=%P", commit).split()
-        if parents != [previous]:
+    history = retelling.history()
+    commits = list(history)
+    pairs = list(zip([retelling.base, *commits[:-1]], commits))
+    patches = diffs(retelling.repo, pairs, context=context)
+    numstats = diffs(retelling.repo, pairs, numstat=True)
+    for number, ((previous, commit), patch, numstat) in enumerate(
+        zip(pairs, patches, numstats, strict=True), 1
+    ):
+        if history[commit].parents != [previous]:
             issues.append(
                 f"Step {number} must have exactly the preceding commit as its parent."
             )
-        patch = diff(retelling.repo, previous, commit, context=context)
         size = line_count(patch)
         if size > limit:
             issues.append(
@@ -176,12 +195,12 @@ def inspect(
             {
                 "step": number,
                 "commit": commit,
-                "subject": retelling.message(commit).split("\n")[0],
+                "subject": history[commit].message.split("\n")[0],
                 "presentation_lines": size,
-                **churn(retelling.repo, previous, commit),
+                **tally(numstat),
             }
         )
-        previous = commit
+    previous = commits[-1] if commits else retelling.base
     return finish_report(retelling, limit, issues, steps, previous, context)
 
 
@@ -219,8 +238,13 @@ def finish_report(
                 f"target versions: {', '.join(stray)}"
             )
         retold = sorted(changed_paths(repo, base, target) - remaining)
+        by_path = {
+            entry.split("\t", 2)[2]: entry
+            for entry in diff(repo, base, target, numstat=True).split("\0")
+            if entry
+        }
         omitted = [
-            {"path": path, **churn(repo, base, target, [path])}
+            {"path": path, **tally(by_path.get(path, ""))}
             for path in sorted(remaining - set(stray))
         ]
     real = churn(repo, base, target, retold)
@@ -281,9 +305,9 @@ def worktrees(repo: Path, name: str) -> list[dict]:
     attached = []
     for record in git(repo, "worktree", "list", "--porcelain", "-z").split("\0\0"):
         fields = {}
-        for field in record.split("\0"):
-            if field:
-                key, _, value = field.partition(" ")
+        for entry in record.split("\0"):
+            if entry:
+                key, _, value = entry.partition(" ")
                 fields[key] = value
         if fields.get("branch") == f"refs/heads/retell/{name}":
             attached.append(fields)

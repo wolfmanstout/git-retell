@@ -8,6 +8,7 @@ removed it (if any), and whether a replacement took its place, so the browser
 can tell temporary scaffolding from lines that reach the target.
 """
 
+import functools
 import html
 import json
 import re
@@ -32,12 +33,27 @@ from pygments.token import (
 from pygments.util import ClassNotFound
 
 from .commit_range import CommitRange
-from .git import churn, diff, empty_tree, git, line_count
+from .git import churn, diff_pairs, diffs, empty_tree, git, line_count, tally
 from .retelling import Retelling, inspect
 from .viewer import Story, safe_text
 
 EMPTY = "0" * 40
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
+# Each file's patch in diff-tree output starts here.
+FILE = re.compile(r"^diff --git ", re.MULTILINE)
+INDEX = re.compile(r"^index ([0-9a-f]+)\.\.([0-9a-f]+)", re.MULTILINE)
+# Line matching diffs; unified=0 leaves only the hunk headers that matter.
+MATCHING = [
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-renames",
+    "--patch",
+    "--full-index",
+    "--unified=0",
+    "--diff-algorithm=myers",
+    "--no-indent-heuristic",
+]
 # Hyphenated tokens (Co-Authored-By) or well-known words; "Note: ..." stays prose.
 TRAILER = re.compile(r"(?i:[a-z0-9]+(?:-[a-z0-9]+)+|fixes|closes|refs|cc|bug): \S")
 # Coarse token classes keep the payload small and the theme easy to restyle.
@@ -104,6 +120,8 @@ def split_lines(text: str) -> list[str]:
     return lines[:-1] if lines and lines[-1] == "" else lines
 
 
+# Lexers yield few distinct token types, so look each one up once.
+@functools.cache
 def category(token: _TokenType) -> str:
     for kind, name in CATEGORIES:
         if token in kind:
@@ -142,8 +160,10 @@ def highlight(path: str, text: str) -> list[str] | None:
 class Builder:
     """Accumulate line texts, file versions, and slides for the browser payload."""
 
-    def __init__(self, story: Story):
+    def __init__(self, story: Story, hunks: dict[tuple[str, str], str]):
         self.story = story
+        # Line matching patches of each (old blob, new blob) pair.
+        self.hunks = hunks
         self.text: list[str] = []
         self.html: list[str | None] = []
         self.versions: list[list[int]] = []
@@ -191,18 +211,9 @@ class Builder:
 
         Also return the old IDs removed by hunks that add lines in their place.
         """
-        patch = git(
-            self.story.repo,
-            "diff",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--unified=0",
-            "--diff-algorithm=myers",
-            "--no-indent-heuristic",
-            before,
-            after,
-        )
+        patch = self.hunks.get((before, after))
+        if patch is None:
+            patch = git(self.story.repo, "diff", *MATCHING, before, after)
         ids: list[int | None] = []
         replaced: set[int] = set()
         old = 0
@@ -232,10 +243,13 @@ class Builder:
                 self.ends[identity] = number
 
     def step(
-        self, number: int, previous: str, commit: str, content: dict[str, bytes], raw
+        self,
+        number: int,
+        content: dict[str, bytes],
+        raw: list[tuple[str, ...]],
+        numstat: dict[str, tuple[str, str]],
     ):
         files = []
-        numstat = numstats(self.story.repo, previous, commit)
         for old_mode, new_mode, old_oid, new_oid, status, path in raw:
             plus, minus = numstat.get(path, ("0", "0"))
             binary = plus == "-"
@@ -301,10 +315,8 @@ class Builder:
         }
 
 
-def raw_changes(repo: Path, before: str, after: str) -> list[tuple[str, ...]]:
-    fields = git(
-        repo, "diff", "--raw", "-z", "--no-abbrev", "--no-renames", before, after, "--"
-    ).split("\0")
+def raw_changes(output: str) -> list[tuple[str, ...]]:
+    fields = output.split("\0")
     changes = []
     for header, path in zip(fields[0::2], fields[1::2], strict=False):
         if not header:
@@ -314,16 +326,29 @@ def raw_changes(repo: Path, before: str, after: str) -> list[tuple[str, ...]]:
     return changes
 
 
-def numstats(repo: Path, before: str, after: str) -> dict[str, tuple[str, str]]:
+def numstats(output: str) -> dict[str, tuple[str, str]]:
     result = {}
-    output = git(
-        repo, "diff", "--numstat", "-z", "--no-renames", before, after, "--"
-    ).split("\0")
-    for entry in output:
+    for entry in output.split("\0"):
         if entry:
             plus, minus, path = entry.split("\t", 2)
             result[path] = (plus, minus)
     return result
+
+
+def matching_hunks(
+    repo: Path, pairs: list[tuple[str, str]]
+) -> dict[tuple[str, str], str]:
+    """Every step's line matching patches, keyed by their full blob IDs.
+
+    A file's patch lacks an index line of both blobs when only its mode
+    changed or Git split a type change in two; Builder diffs those itself.
+    """
+    found = {}
+    for output in diff_pairs(repo, pairs, *MATCHING):
+        for patch in FILE.split(output)[1:]:
+            if index := INDEX.search(patch):
+                found[index[1], index[2]] = patch
+    return found
 
 
 def selected_paths(story: Story, pathspecs: list[str]) -> list[str]:
@@ -389,8 +414,8 @@ def summary(story: Story, context: int) -> tuple[dict, list[int]]:
         }
         return fields, [step["presentation_lines"] for step in report["steps"]]
     repo, commits = story.repo, story.commits()
-    parents = [story.base, *commits[:-1]]
-    steps = [churn(repo, a, b) for a, b in zip(parents, commits)]
+    pairs = list(zip([story.base, *commits[:-1]], commits))
+    steps = [tally(output) for output in diffs(repo, pairs, numstat=True)]
     net = churn(repo, story.base, story.tip)
     total = sum(step["added"] + step["deleted"] for step in steps)
     binary = net["binary_files"] or any(step["binary_files"] for step in steps)
@@ -409,9 +434,7 @@ def summary(story: Story, context: int) -> tuple[dict, list[int]]:
         "fromScratch": story.base == empty_tree(repo),
         "omitted": [],
     }
-    lines = [
-        line_count(diff(repo, a, b, context=context)) for a, b in zip(parents, commits)
-    ]
+    lines = [line_count(patch) for patch in diffs(repo, pairs, context=context)]
     return fields, lines
 
 
@@ -427,16 +450,25 @@ def payload(
             "No explanatory steps yet. Create commits in the authoring worktree."
         )
     fields, sizes = summary(story, context)
-    parents = [story.base, *commits[:-1]]
-    changes = [raw_changes(story.repo, a, b) for a, b in zip(parents, commits)]
+    repo = story.repo
+    pairs = list(zip([story.base, *commits[:-1]], commits))
+    changes = [
+        raw_changes(output)
+        for output in diff_pairs(
+            repo, pairs, "--raw", "-z", "--no-abbrev", "--no-renames"
+        )
+    ]
+    counts = [
+        numstats(output)
+        for output in diff_pairs(repo, pairs, "--numstat", "-z", "--no-renames")
+    ]
     content = blobs(
-        story.repo,
-        {oid for step in changes for change in step for oid in change[2:4]},
+        repo, {oid for step in changes for change in step for oid in change[2:4]}
     )
-    builder = Builder(story)
+    builder = Builder(story, matching_hunks(repo, pairs))
     slides = []
-    for number, (previous, commit, raw) in enumerate(
-        zip(parents, commits, changes, strict=True)
+    for number, (commit, raw, numstat) in enumerate(
+        zip(commits, changes, counts, strict=True)
     ):
         message = safe_text(story.message(commit))
         subject, _, body = message.partition("\n")
@@ -445,7 +477,7 @@ def payload(
             "subject": subject,
             "body": without_trailers(body),
             "lines": sizes[number],
-            "files": builder.step(number, previous, commit, content, raw),
+            "files": builder.step(number, content, raw, numstat),
         }
         if isinstance(story, CommitRange):
             author, date = story.byline(commit)
