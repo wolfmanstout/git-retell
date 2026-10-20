@@ -26,9 +26,15 @@
   --new: #e8b84a;
   --new-soft: rgba(232, 184, 74, .16);
   --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 28px rgba(0,0,0,.35);
-  --tk-k: #c099ff; --tk-s: #a8d88a; --tk-c: #5f6b7d; --tk-n: #ff9e64;
+  --tk-k: #c099ff; --tk-s: #a8d88a; --tk-c: #8793a5; --tk-n: #ff9e64;
   --tk-f: #82aaff; --tk-t: #ffc777; --tk-d: #fca7ea; --tk-b: #65bcff;
   --tk-g: #ff757f; --tk-a: #ffc777; --tk-o: #89ddff; --tk-h: #ffc777;
+  /* Dark mode can't dim deleted code with opacity and keep 4.5:1 contrast,
+     so it draws deleted code in one gray instead. */
+  --line-no: #778395;
+  --add-no: color-mix(in srgb, var(--add) 70%, var(--text));
+  --del-ink: #818d9f; --del-dim: 1;
+  --scaf-ink: #7a8698; --scaf-dim: 1;
   color-scheme: dark;
 }
 /* Light colors follow GitHub's Primer palette: white surfaces, crisp borders. */
@@ -56,6 +62,10 @@
   --tk-k: #cf222e; --tk-s: #0a3069; --tk-c: #59636e; --tk-n: #0550ae;
   --tk-f: #6639ba; --tk-t: #953800; --tk-d: #8250df; --tk-b: #0550ae;
   --tk-g: #116329; --tk-a: #0550ae; --tk-o: #0550ae; --tk-h: #0550ae;
+  --line-no: #818b98;
+  --add-no: color-mix(in srgb, var(--add) 80%, var(--text));
+  --del-ink: initial; --del-dim: .5;
+  --scaf-ink: initial; --scaf-dim: .32;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -70,6 +80,8 @@
     --tk-k: #cf222e; --tk-s: #0a3069; --tk-c: #59636e; --tk-n: #0550ae;
     --tk-f: #6639ba; --tk-t: #953800; --tk-d: #8250df; --tk-b: #0550ae;
     --tk-g: #116329; --tk-a: #0550ae; --tk-o: #0550ae; --tk-h: #0550ae;
+    --line-no: #818b98; --add-no: color-mix(in srgb, var(--add) 80%, var(--text));
+    --del-ink: initial; --del-dim: .5; --scaf-ink: initial; --scaf-dim: .32;
     color-scheme: light;
   }
 }
@@ -209,18 +221,18 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
   transition: background-color .45s ease;
 }
 .row .no {
-  flex: none; width: 52px; padding-right: 12px; text-align: right; color: var(--faint);
+  flex: none; width: 52px; padding-right: 12px; text-align: right; color: var(--line-no);
   user-select: none; font-variant-numeric: tabular-nums; transition: color .45s, background-color .45s;
 }
 .row .sg { flex: none; width: 18px; text-align: center; user-select: none; color: transparent; transition: color .45s; }
 .row .cd { padding-right: 24px; transition: filter .5s ease, opacity .5s ease, color .5s ease; }
 .row.add { background: var(--add-bg); }
-.row.add .no { background: var(--add-gutter); color: color-mix(in srgb, var(--add) 80%, var(--text)); }
+.row.add .no { background: var(--add-gutter); color: var(--add-no); }
 .row.add .sg { color: var(--add); }
 .row.del { background: var(--del-bg); }
 .row.del .no { background: var(--del-gutter); color: color-mix(in srgb, var(--del) 70%, var(--text)); }
 .row.del .sg { color: var(--del); }
-.row.del .cd { filter: grayscale(1); opacity: .5; }
+.row.del .cd { --ink: var(--del-ink); color: var(--ink, var(--text)); filter: grayscale(1); opacity: var(--del-dim); }
 .row.gap {
   color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; font-size: 11.5px;
   background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule-soft) 6px 7px);
@@ -243,19 +255,21 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 }
 .row.note .cd { color: var(--muted); font-style: italic; }
 .row .cd i { font-style: normal; }
-.cd .k { color: var(--tk-k); } .cd .s { color: var(--tk-s); } .cd .c { color: var(--tk-c); font-style: italic; }
-.cd .n { color: var(--tk-n); } .cd .f { color: var(--tk-f); } .cd .t { color: var(--tk-t); }
-.cd .d { color: var(--tk-d); } .cd .b { color: var(--tk-b); } .cd .g { color: var(--tk-g); }
-.cd .a { color: var(--tk-a); } .cd .o { color: var(--tk-o); } .cd .h { color: var(--tk-h); font-weight: 600; }
+.cd * { transition: color .5s ease; }
+/* --ink, when set, overrides token colors (deleted code in dark mode). */
+.cd .k { color: var(--ink, var(--tk-k)); } .cd .s { color: var(--ink, var(--tk-s)); } .cd .c { color: var(--ink, var(--tk-c)); font-style: italic; }
+.cd .n { color: var(--ink, var(--tk-n)); } .cd .f { color: var(--ink, var(--tk-f)); } .cd .t { color: var(--ink, var(--tk-t)); }
+.cd .d { color: var(--ink, var(--tk-d)); } .cd .b { color: var(--ink, var(--tk-b)); } .cd .g { color: var(--ink, var(--tk-g)); }
+.cd .a { color: var(--ink, var(--tk-a)); } .cd .o { color: var(--ink, var(--tk-o)); } .cd .h { color: var(--ink, var(--tk-h)); font-weight: 600; }
 .cd .e { font-style: italic; }
 /* Line lifetimes: hatched gutters mark lines that never reach the target. */
 .row.add.temp { background: color-mix(in srgb, var(--add-bg) 55%, transparent); }
 .row.add.temp .no { background: repeating-linear-gradient(135deg, var(--add-gutter) 0 3px, transparent 3px 6px); }
 .row.ctx.temp .no { background: repeating-linear-gradient(135deg, var(--rule-soft) 0 3px, transparent 3px 6px); }
 .row.del.scaf { background: color-mix(in srgb, var(--del-bg) 45%, transparent); }
-.row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); color: var(--faint); }
+.row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); color: var(--line-no); }
 .row.del.scaf .sg { opacity: .5; }
-.row.del.scaf .cd { opacity: .32; }
+.row.del.scaf .cd { --ink: var(--scaf-ink); opacity: var(--scaf-dim); }
 /* A selected line: its bar says where it came from and where it goes. */
 .row.line .no { cursor: pointer; }
 .row.sel {
