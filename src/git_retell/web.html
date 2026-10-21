@@ -214,6 +214,7 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 /* Additions sit in the top half and deletions in the bottom, so neither hides the other. */
 .ruler .tick.a { background: var(--add); bottom: 50%; } .ruler .tick.d { background: var(--del); top: 50%; }
 .rows { font-size: 12.5px; overflow-x: auto; overflow-y: hidden; padding: 6px 0; }
+.rows:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .rows-inner { display: inline-block; min-width: 100%; }
 .row {
   --lh: 21px;
@@ -401,16 +402,19 @@ footer.seek {
 .files li:hover .only { visibility: visible; }
 .hiddenonly { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule-soft); padding-top: 10px; }
 
-/* Help */
+/* Help: a native modal dialog, so the page behind it is inert and focus returns on close.
+   Never set display here; the browser hides it with display: none while closed. */
 .help {
-  position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45);
-  opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10;
+  color: var(--text); background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+  padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow);
+  box-sizing: border-box; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto;
+  opacity: 0; transition: opacity .2s, display .2s allow-discrete, overlay .2s allow-discrete;
 }
-.help.show { opacity: 1; pointer-events: auto; }
-.help > div { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow);
-  /* Even while invisible it takes up layout, so it must never be wider than the screen. */
-  box-sizing: border-box; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: auto; }
-.help h2 { margin: 0 0 12px; font-size: 15px; }
+.help::backdrop { background: rgba(0,0,0,.45); opacity: 0; transition: opacity .2s, display .2s allow-discrete, overlay .2s allow-discrete; }
+.help[open], .help[open]::backdrop { opacity: 1; }
+@starting-style { .help[open], .help[open]::backdrop { opacity: 0; } }
+.help .close { position: absolute; top: 14px; right: 14px; }
+.help h2 { margin: 0 0 12px; font-size: 15px; outline: none; }
 .help dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 13px; }
 .help dt { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
 .help dd { margin: 0; color: var(--muted); }
@@ -450,12 +454,22 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <span class="ctx-readout mono" id="ctx"></span>
     <button class="btn" id="more" title="More context (+)">+</button>
     <button class="btn" id="full" title="Whole files (f)">Whole files</button>
-    <button class="btn" id="filesbtn" title="Choose files (/)">Files</button>
+    <button class="btn" id="filesbtn" title="Choose files (/)" aria-expanded="false" aria-controls="files">Files</button>
     <a class="btn" id="download" hidden title="Download this page as a single HTML file">Download</a>
     <button class="btn" id="theme" title="Theme (t)">◐</button>
     <button class="btn" id="helpbtn" title="Keys (?)">?</button>
   </div>
 </header>
+<div class="files" id="files" role="dialog" aria-label="Files" hidden>
+  <div class="fh">
+    <input type="search" id="fq" aria-label="Filter files" placeholder="Match: tests/  *.lock  parser" spellcheck="false" autocomplete="off">
+    <button class="btn" id="fshow" title="Show the matching files">Show</button>
+    <button class="btn" id="fhide" title="Hide the matching files">Hide</button>
+    <button class="btn" id="fonly" title="Show only the matching files">Only</button>
+  </div>
+  <div class="fsum"><span id="fcount"></span><span class="spacer"></span><button class="linkish" id="fall">Show all</button></div>
+  <ul id="flist"></ul>
+</div>
 <main>
   <aside class="story" id="story"></aside>
   <section class="stage" id="stage"></section>
@@ -473,18 +487,9 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <div class="hover" id="hover"></div>
   </div>
 </footer>
-<div class="files" id="files" hidden>
-  <div class="fh">
-    <input type="search" id="fq" placeholder="Match: tests/  *.lock  parser" spellcheck="false" autocomplete="off">
-    <button class="btn" id="fshow" title="Show the matching files">Show</button>
-    <button class="btn" id="fhide" title="Hide the matching files">Hide</button>
-    <button class="btn" id="fonly" title="Show only the matching files">Only</button>
-  </div>
-  <div class="fsum"><span id="fcount"></span><span class="spacer"></span><button class="linkish" id="fall">Show all</button></div>
-  <ul id="flist"></ul>
-</div>
-<div class="help" id="help"><div>
-  <h2>Keys</h2>
+<dialog class="help" id="help" aria-labelledby="helptitle">
+  <button class="btn close" id="helpclose" aria-label="Close">×</button>
+  <h2 id="helptitle" tabindex="-1" autofocus>Keys</h2>
   <dl>
     <dt>→ n l space</dt><dd>Next step</dd>
     <dt>← p h</dt><dd>Previous step</dd>
@@ -515,7 +520,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <div><span class="journey">‹ edit 2 of 4 ›</span>&nbsp; on a file: go to its previous or next change</div>
     <div><span class="journey last">final edit</span>&nbsp; no later step changes the file</div>
   </div>
-</div></div>
+</dialog>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 "use strict";
@@ -824,7 +829,7 @@ function cardEl(card) {
   const el = document.createElement("div");
   el.className = "card";
   el.dataset.key = card.key;
-  el.innerHTML = `<div class="card-head"></div><div class="rows"><div class="rows-inner"></div></div>`;
+  el.innerHTML = `<div class="card-head"></div><div class="rows" tabindex="0" role="region" aria-label="${esc(card.file.path)} diff"><div class="rows-inner"></div></div>`;
   updateCardHead(el, card);
   const inner = el.querySelector(".rows-inner");
   for (const r of card.rows) inner.appendChild(rowEl(r));
@@ -1289,6 +1294,10 @@ function setContext(fn) {
   if (old[0] !== state.ctx || old[1] !== state.full) go(0);
 }
 
+// :focus-visible can't tell these apart: any key press turns it on.
+let clickedRows = null;
+document.addEventListener("pointerdown", (e) => { clickedRows = e.target.closest?.(".rows") ?? null; }, true);
+document.addEventListener("keydown", (e) => { if (e.key === "Tab") clickedRows = null; }, true);
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
@@ -1298,10 +1307,17 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.target instanceof HTMLInputElement) return;
+  // A diff reached with Tab scrolls sideways; after a click in it, arrows still change steps.
+  if ((k === "ArrowLeft" || k === "ArrowRight") && e.target.matches?.(".rows") && e.target !== clickedRows) return;
   if (k === "Escape" && peekEl) { closePeek(); e.preventDefault(); return; }
-  if (k === "Escape" && state.sel && !$("help").classList.contains("show")) { select(null); e.preventDefault(); return; }
+  if (k === "Escape" && state.sel && !$("help").open) { select(null); e.preventDefault(); return; }
   if ((k === "[" || k === "]") && follow(k === "[" ? -1 : 1)) { e.preventDefault(); return; }
-  if ($("help").classList.contains("show") && k !== "?") { $("help").classList.remove("show"); if (k === "Escape") return; }
+  if ($("help").open && k !== "?") {
+    // Tab and the dialog's own buttons work as usual; any other key closes it and acts.
+    if (k === "Tab" || (e.target.closest?.("#help button") && (k === "Enter" || k === " "))) return;
+    toggleHelp(false);
+    if (k === "Escape") { e.preventDefault(); return; }
+  }
   if (["ArrowRight", "n", "l", " "].includes(k)) step(e.shiftKey && k === " " ? -1 : 1, e.repeat);
   else if (["ArrowLeft", "p", "h"].includes(k)) step(-1, e.repeat);
   else if (k === "Home") goto(nextShown(-1, 1) ?? 0);
@@ -1314,7 +1330,7 @@ document.addEventListener("keydown", (e) => {
   else if (k === "f") setContext(() => { state.full = !state.full; });
   else if (k === "t") toggleTheme();
   else if (k === "/") toggleFiles(true);
-  else if (k === "?") $("help").classList.toggle("show");
+  else if (k === "?") toggleHelp();
   else return;
   e.preventDefault();
 });
@@ -1323,8 +1339,12 @@ $("next").onclick = () => step(1);
 $("more").onclick = () => setContext(() => { state.full = false; state.ctx += 3; });
 $("less").onclick = () => setContext(() => { state.full = false; state.ctx = Math.max(0, state.ctx - 3); });
 $("full").onclick = () => setContext(() => { state.full = !state.full; });
-$("helpbtn").onclick = () => $("help").classList.toggle("show");
-$("help").onclick = () => $("help").classList.remove("show");
+$("helpbtn").onclick = () => toggleHelp(true);
+$("help").onclick = () => toggleHelp(false);
+function toggleHelp(open) {
+  const el = $("help");
+  if (open ?? !el.open) { if (!el.open) el.showModal(); } else el.close();
+}
 $("theme").onclick = toggleTheme;
 // Only `web --serve` sets this; a saved copy has nowhere to download from.
 if (D.download) {
@@ -1562,8 +1582,12 @@ function renderFiles() {
 }
 function toggleFiles(open) {
   const el = $("files");
+  const wasOpen = !el.hidden;
   el.hidden = !(open ?? el.hidden);
+  $("filesbtn").setAttribute("aria-expanded", String(!el.hidden));
   if (!el.hidden) { renderFiles(); $("fq").focus(); $("fq").select(); }
+  // Closing from inside (Escape) returns focus to the button; a click outside has already moved it.
+  else if (wasOpen && el.contains(document.activeElement)) $("filesbtn").focus();
 }
 function only(path) {
   refilter(focusedOn(path) ? [] : PATHS.filter((p) => p !== path));
