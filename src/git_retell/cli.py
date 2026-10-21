@@ -725,6 +725,9 @@ def web(
     step that removes or rewrites it, or a preview of its place in the
     target). Following a step keeps the line selected; [ and ] go back and
     forward. Hatched line numbers mark lines that never reach the target.
+    The browser's Back and Forward buttons return to previously visited
+    steps, with the line that was selected there; scrubbing the seek bar or
+    holding a key down counts as one visit.
 
     The Files panel (/) and each file's focus button hide files; navigation
     then skips steps that change none of the shown files. --include and --exclude
