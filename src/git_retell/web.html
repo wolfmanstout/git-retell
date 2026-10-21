@@ -249,24 +249,44 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .cd .a { color: var(--tk-a); } .cd .o { color: var(--tk-o); } .cd .h { color: var(--tk-h); font-weight: 600; }
 .cd .e { font-style: italic; }
 /* Line lifetimes: hatched gutters mark lines that never reach the target. */
-/* A zero-width anchor stuck to the visible right edge, so labels never widen a row. */
-.row .ft { flex: none; width: 0; margin-left: auto; position: sticky; right: 0; }
-.row .ft > span {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  font: 10.5px/15px -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; white-space: nowrap;
-  color: var(--muted); background: var(--card); border: 1px dashed var(--faint); border-radius: 99px; padding: 0 7px;
-  cursor: pointer; user-select: none;
-}
-.row.act .no { cursor: pointer; }
-.row.act .no:hover { color: var(--accent); }
 .row.add.temp { background: color-mix(in srgb, var(--add-bg) 55%, transparent); }
 .row.add.temp .no { background: repeating-linear-gradient(135deg, var(--add-gutter) 0 3px, transparent 3px 6px); }
-.row.add.temp .ft > span { color: color-mix(in srgb, var(--add) 75%, var(--muted)); border-color: color-mix(in srgb, var(--add) 45%, transparent); }
 .row.ctx.temp .no { background: repeating-linear-gradient(135deg, var(--rule-soft) 0 3px, transparent 3px 6px); }
 .row.del.scaf { background: color-mix(in srgb, var(--del-bg) 45%, transparent); }
 .row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); color: var(--faint); }
 .row.del.scaf .sg { opacity: .5; }
 .row.del.scaf .cd { opacity: .32; }
+/* A selected line: its bar says where it came from and where it goes. */
+.row.line .no { cursor: pointer; }
+.row.sel {
+  background-image: linear-gradient(color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.row.sel .no { color: var(--accent); }
+.linebar {
+  position: fixed; z-index: 7; max-width: 760px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow);
+  font: 12px/16px -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+}
+.linebar .lb {
+  display: flex; gap: 6px; align-items: baseline; min-width: 0; padding: 4px 9px; border-radius: 7px;
+  border: 1px solid var(--rule-soft); background: none; color: var(--text); font: inherit; text-align: left;
+}
+.linebar button.lb { cursor: pointer; }
+.linebar button.lb:hover { border-color: var(--accent); }
+.linebar .lb.on { border-color: var(--accent); background: var(--accent-soft); }
+.linebar .lb.fwd { justify-content: flex-end; text-align: right; }
+.linebar .lb.off { color: var(--muted); border-style: dashed; }
+.linebar .v { flex: none; font-weight: 600; white-space: nowrap; }
+.linebar .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.linebar .t code { font-size: 11px; }
+.linebar .off .v { font-weight: 400; }
+@media (max-width: 860px) {
+  .linebar { grid-template-columns: 1fr; }
+  .linebar .lb { padding: 7px 10px; }
+  .linebar .lb.fwd { justify-content: flex-start; text-align: left; }
+  .linebar .lb.fwd .v { order: -1; }
+}
 .peek {
   position: fixed; z-index: 8; width: min(680px, calc(100vw - 32px));
   background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
@@ -463,8 +483,9 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>◎</dt><dd>Show only this file (again: show all)</dd>
     <dt>t</dt><dd>Toggle theme</dd>
     <dt>?</dt><dd>This help</dd>
-    <dt>click line no.</dt><dd>Peek at it in the target, or jump to the step that removes or added it</dd>
-    <dt>Esc</dt><dd>Close the peek</dd>
+    <dt>click a line</dt><dd>Show where it came from and where it goes</dd>
+    <dt>[ ]</dt><dd>Follow the selected line back or forward</dd>
+    <dt>Esc</dt><dd>Close the peek, then clear the selection</dd>
   </dl>
   <h3>Line lifetimes</h3>
   <div class="legend">
@@ -490,7 +511,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.3,.7,.2,1)";
 const ROW_H = 21;
 
-const state = { step: 0, ctx: D.context, full: false, focus: null, omittedOpen: false, hidden: new Set() };
+const state = { step: 0, ctx: D.context, full: false, focus: null, sel: null, omittedOpen: false, hidden: new Set() };
 let shown = null;      // model currently displayed (or being animated to)
 let gen = 0;           // transition generation; stale continuations bail out
 let running = [];      // animations of the transition in flight
@@ -498,50 +519,37 @@ let lastNav = 0;
 
 // ---------- Lifetimes ----------
 
-// Where each line ends up: the target location of lines that survive, and of
-// identical text elsewhere for lines that don't (moved between files, retyped).
+// Every line has a story on either side: where it came from (the step that
+// added it, or the base) and where it goes (the step that removes it, or the
+// target). The base and target are previews; steps are jumps.
 const REWRITTEN = new Set(D.rewritten);
-const FINAL = new Map(), FINAL_TEXT = new Map();
-// Blank lines and lone brackets match arbitrarily, so they get no labels.
-function trivial(t) { return !/[\p{L}\p{N}_]/u.test(t); }
+const FINAL = new Map(), BASE = new Map();
 for (const [path, v] of Object.entries(D.targetVersions)) {
-  D.versions[v].forEach((id, k) => {
-    const at = { path, v, k };
-    FINAL.set(id, at);
-    const t = D.text[id].trim();
-    if (!trivial(t) && !FINAL_TEXT.has(t)) FINAL_TEXT.set(t, at);
+  D.versions[v].forEach((id, k) => FINAL.set(id, { path, v, k }));
+}
+// A base line's first appearance is in the version a step started from.
+for (const s of D.slides) for (const f of s.files) {
+  if (f.before == null) continue;
+  D.versions[f.before].forEach((id, k) => {
+    if (D.origin[id] < 0 && !BASE.has(id)) BASE.set(id, { path: f.path, v: f.before, k });
   });
 }
 const temporary = (id) => D.ends[id] != null && D.ends[id] >= 0;
-function fateOf(kind, id) {
-  const end = D.ends[id], origin = D.origin[id];
-  if (kind === "del") {
-    if (origin < 0) return null;
-    return { cls: "scaf", label: `from step ${origin + 1}`, jump: origin,
-      title: `Cleans up a line step ${origin + 1} added; click the line number to go there` };
-  }
-  if (end == null) return null;
-  if (end < 0) {
-    const at = FINAL.get(id);
-    return { cls: "", peek: at, title: `In the target at ${at.path}:${at.k + 1}; click the line number to peek` };
-  }
-  const verb = REWRITTEN.has(id) ? "rewritten" : "removed";
-  const same = FINAL_TEXT.get(D.text[id].trim());
-  return { cls: "temp", label: `${verb} in step ${end + 1}`, jump: end,
-    title: `Temporary: ${verb} in step ${end + 1}; click the line number to go there`
-      + (same ? `\nThe same text is in the target at ${same.path}:${same.k + 1}` : "") };
+// Hatching marks temporary lines, and deletions that clean up an earlier step.
+function lifeCls(kind, id) {
+  if (kind === "del") return D.origin[id] >= 0 ? "scaf" : "";
+  return temporary(id) ? "temp" : "";
 }
-// Label only the first line of each run so a block reads as one unit. Any
-// other line ends the run, except changed blank lines and lone brackets.
-function labelRuns(rows) {
-  let prev = null;
-  for (const r of rows) {
-    const changed = r.kind === "add" || r.kind === "del";
-    if (changed && trivial(D.text[r.id])) continue;
-    const label = changed && r.fate ? r.fate.label : null;
-    if (label && label !== prev) r.pill = label;
-    prev = label;
-  }
+function subjectOf(i) { return D.slides[i].subject.replace(/^synthetic:\s*/i, ""); }
+// The two sides of a line's story as seen from step I.
+function lifeOf(kind, id, i) {
+  const origin = D.origin[id], end = D.ends[id];
+  const verb = REWRITTEN.has(id) ? "Rewritten" : "Removed";
+  const side = (s) => s === i ? { verb: s === origin ? "Added in this step" : `${verb} in this step` }
+    : { verb: `${s === origin ? "Added" : verb} in step ${s + 1}`, jump: s, subject: subjectOf(s) };
+  const back = kind === "add" ? side(i) : origin < 0 ? { verb: "In the base", peek: BASE.get(id), where: "in the base" } : side(origin);
+  const fwd = kind === "del" ? side(i) : end == null ? null : end < 0 ? { verb: "In the target", peek: FINAL.get(id), where: "in the target" } : side(end);
+  return { back, fwd };
 }
 let STATS = computeStats();
 function computeStats() { return D.slides.map((s) => {
@@ -643,7 +651,7 @@ function buildCard(file, index) {
   for (let k = 0; k < merged.length;) {
     if (show[k]) {
       const r = merged[k];
-      rows.push({ key: "l:" + r.id, kind: r.kind, id: r.id, no: r.no, fate: fateOf(r.kind, r.id) });
+      rows.push({ key: "l:" + r.id, kind: r.kind, id: r.id, no: r.no, cls: lifeCls(r.kind, r.id) });
       if (first < 0) first = k;
       last = k;
       k++;
@@ -660,7 +668,6 @@ function buildCard(file, index) {
       k = e;
     }
   }
-  labelRuns(rows);
   if (!changed && file.oldMode !== file.newMode) {
     rows.unshift({ key: `n:${index}:${file.path}`, kind: "note", text: `mode ${file.oldMode} → ${file.newMode}` });
   }
@@ -751,21 +758,19 @@ function rowEl(r) {
   const el = document.createElement("div");
   el.className = "row " + r.kind;
   el.dataset.key = r.key;
-  el.innerHTML = `<span class="no"></span><span class="sg"></span><span class="cd"></span><span class="ft"></span>`;
+  el.innerHTML = `<span class="no"></span><span class="sg"></span><span class="cd"></span>`;
   fillRow(el, r);
   return el;
 }
 function fillRow(el, r) {
-  const f = r.fate;
-  el.className = "row " + r.kind + (f && f.cls ? " " + f.cls : "") + (f ? " act" : "");
+  el.className = "row " + r.kind + (r.cls ? " " + r.cls : "") + (r.id != null ? " line" : "") + (r.key === state.sel ? " sel" : "");
   el._r = r;
-  const [no, sg, cd, ft] = el.children;
+  const [no, sg, cd] = el.children;
   no.textContent = r.no ?? "";
-  ft.innerHTML = r.pill ? `<span>${esc(r.pill)}</span>` : "";
   sg.textContent = r.kind === "add" ? "+" : r.kind === "del" ? "−" : r.kind === "gap" ? (r.scope && r.scope.length ? "↥" : "⋯") : "";
   if (r.id != null) {
     if (!el._filled) { cd.innerHTML = lineHtml(r.id) || " "; el._filled = true; }
-    if (f) el.title = f.title; else el.removeAttribute("title");
+    el.removeAttribute("title");
   } else if (r.scope && r.scope.length) {
     const inner = r.scope[r.scope.length - 1];
     el.classList.add("scoped");
@@ -970,7 +975,7 @@ async function go(dir) {
   const target = buildModel();
   const anchor = anchorOf(target);
   const my = ++gen;
-  closePeek();
+  hideBar();
   const now = performance.now();
   const hurried = now - lastNav < 380;   // key held down or rapid clicks: move faster
   lastNav = now;
@@ -1081,10 +1086,14 @@ function flashFocus() {
   const key = state.focus;
   state.focus = null;
   const el = key && stage.querySelector(`[data-key="${CSS.escape(key)}"]`);
-  if (!el) return;
-  el.classList.remove("flash");
-  void el.offsetWidth;
-  el.classList.add("flash");
+  // A selected line needs no flash: its highlight and bar already mark it.
+  if (el && key !== state.sel) {
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
+  }
+  // A selected line keeps its bar wherever the line is shown.
+  if (state.sel) showBar();
 }
 
 function anchorTop(key) {
@@ -1247,6 +1256,8 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.target instanceof HTMLInputElement) return;
   if (k === "Escape" && peekEl) { closePeek(); e.preventDefault(); return; }
+  if (k === "Escape" && state.sel && !$("help").classList.contains("show")) { select(null); e.preventDefault(); return; }
+  if ((k === "[" || k === "]") && follow(k === "[" ? -1 : 1)) { e.preventDefault(); return; }
   if ($("help").classList.contains("show") && k !== "?") { $("help").classList.remove("show"); if (k === "Escape") return; }
   if (["ArrowRight", "n", "l", " "].includes(k)) step(e.shiftKey && k === " " ? -1 : 1);
   else if (["ArrowLeft", "p", "h"].includes(k)) step(-1);
@@ -1312,23 +1323,24 @@ addEventListener("scroll", () => {
   lastY = y;
 }, { passive: true });
 narrow.addEventListener("change", () => seek.classList.remove("tucked"));
-addEventListener("resize", () => { layoutFlags(); closePeek(); });
+addEventListener("resize", () => { layoutFlags(); closePeek(); placeBar(); });
 
-// ---------- Peek and jump ----------
+// ---------- Line stories ----------
 
-let peekEl = null;
+let peekEl = null, barEl = null;
 function closePeek() {
   if (peekEl) { peekEl.remove(); peekEl = null; }
+  if (barEl) barEl.querySelectorAll(".lb.on").forEach((b) => b.classList.remove("on"));
 }
-// Show a surviving line in its place in the target, a few lines either side.
-function peek(anchor, at) {
+// Show a line in its place in the base or target, a few lines either side.
+function peek(anchor, side) {
   closePeek();
-  const ids = D.versions[at.v];
+  const at = side.peek, ids = D.versions[at.v];
   const [dir, base] = splitPath(at.path);
   const el = document.createElement("div");
   el.className = "peek";
-  el._for = anchor;
-  el.innerHTML = `<div class="ph"><span class="path mono">${esc(dir)}<b>${esc(base)}</b>:${at.k + 1}</span><span>in the target</span></div>`
+  el._side = side;
+  el.innerHTML = `<div class="ph"><span class="path mono">${esc(dir)}<b>${esc(base)}</b>:${at.k + 1}</span><span>${side.where}</span></div>`
     + `<div class="rows"><div class="rows-inner"></div></div>`;
   const inner = el.querySelector(".rows-inner");
   for (let k = Math.max(0, at.k - 4); k < Math.min(ids.length, at.k + 5); k++) {
@@ -1344,20 +1356,94 @@ function peek(anchor, at) {
   el.style.left = Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, s.left + 20)) + "px";
   peekEl = el;
 }
+
+// The selected line's bar: one side for where it came from, one for where it goes.
+function selRow() {
+  return state.sel && stage.querySelector(`.row[data-key="${CSS.escape(state.sel)}"]`);
+}
+function sideHtml(side, dir) {
+  if (!side) return `<span class="lb off ${dir}"></span>`;
+  const act = side.jump != null || side.peek;
+  const tag = act ? "button" : "span";
+  const v = act ? (dir === "back" ? "← " + side.verb : side.verb + " →") : side.verb;
+  const t = side.subject ? `<span class="t">${inline(side.subject)}</span>` : "";
+  const title = side.subject ? ` title="Step ${side.jump + 1}: ${esc(side.subject)}"` : "";
+  const parts = dir === "back" ? `<span class="v">${esc(v)}</span>${t}` : `${t}<span class="v">${esc(v)}</span>`;
+  return `<${tag} class="lb ${dir}${act ? "" : " off"}" data-dir="${dir}"${title}>${parts}</${tag}>`;
+}
+function hideBar() {
+  closePeek();
+  if (barEl) { barEl.remove(); barEl = null; }
+}
+function showBar() {
+  hideBar();
+  const row = selRow();
+  if (!row || !row._r || row._r.id == null) return;
+  const r = row._r, life = lifeOf(r.kind, r.id, state.step);
+  const el = document.createElement("div");
+  el.className = "linebar";
+  el._row = row;
+  el._life = life;
+  el.innerHTML = sideHtml(life.back, "back") + sideHtml(life.fwd, "fwd");
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("button.lb");
+    if (b) follow(b.dataset.dir === "back" ? -1 : 1);
+    e.stopPropagation();
+  });
+  document.body.appendChild(el);
+  barEl = el;
+  placeBar();
+}
+// Keep the bar under its line (or above, near the bottom) as the code scrolls.
+function placeBar() {
+  if (!barEl) return;
+  const row = barEl._row;
+  if (!row.isConnected) { hideBar(); return; }
+  const r = row.getBoundingClientRect(), card = row.closest(".card").getBoundingClientRect();
+  const view = narrow.matches ? { top: 0, bottom: innerHeight } : stage.getBoundingClientRect();
+  barEl.style.visibility = r.bottom <= view.top || r.top >= view.bottom ? "hidden" : "";
+  const left = Math.max(8, card.left);
+  barEl.style.left = left + "px";
+  barEl.style.width = Math.min(card.right, innerWidth - 8) - left + "px";
+  const h = barEl.offsetHeight;
+  barEl.style.top = (r.bottom + 4 + h <= view.bottom - 8 ? r.bottom + 4 : r.top - 4 - h) + "px";
+}
+function select(key) {
+  const old = selRow();
+  if (old) old.classList.remove("sel");
+  state.sel = key;
+  const row = selRow();
+  if (row) row.classList.add("sel");
+  if (key) showBar(); else hideBar();
+}
+// Go back (-1) or forward (1) from the selected line: jump to a step, or preview the base or target.
+function follow(dir) {
+  const row = selRow();
+  if (!row) return false;
+  if (!barEl) showBar();
+  const side = dir < 0 ? barEl._life.back : barEl._life.fwd;
+  if (!side) return false;
+  if (side.peek) {
+    const b = barEl.querySelector(`.lb.${dir < 0 ? "back" : "fwd"}`);
+    if (peekEl && peekEl._side === side) closePeek();
+    else { peek(barEl, side); b.classList.add("on"); }
+  } else if (side.jump != null) {
+    state.focus = state.sel;
+    goto(side.jump);
+  } else return false;
+  return true;
+}
 stage.addEventListener("click", (e) => {
-  const el = e.target.closest(".no, .ft") && e.target.closest(".row");
-  const f = el && el._r && el._r.fate;
-  if (!f || !getSelection().isCollapsed) return;
-  if (f.peek) {
-    if (peekEl && peekEl._for === el) closePeek(); else peek(el, f.peek);
-  } else if (f.jump != null) {
-    state.focus = el.dataset.key;
-    goto(f.jump);
-  } else return;
+  if (!getSelection().isCollapsed) return;
+  const row = e.target.closest(".row");
+  if (row && row._r && row._r.id != null) select(state.sel === row.dataset.key ? null : row.dataset.key);
+  else if (state.sel && !e.target.closest(".card-head, .row")) select(null);
+  else return;
   e.stopPropagation();
 });
 document.addEventListener("click", (e) => { if (peekEl && !peekEl.contains(e.target)) closePeek(); });
-stage.addEventListener("scroll", closePeek, { passive: true });
+// Scrolling inside the stage or the page (narrow screens) moves the line.
+document.addEventListener("scroll", (e) => { if (!(peekEl && peekEl.contains(e.target))) closePeek(); placeBar(); }, { capture: true, passive: true });
 
 // ---------- File filter ----------
 

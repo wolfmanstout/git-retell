@@ -720,6 +720,12 @@ def web(
     +/-: add/remove 3 context lines; 0: reset; f: toggle whole files.
     /: choose which files to show. Home/End: first/last step. ?: help.
 
+    Clicking a line selects it and shows where it came from (the step that
+    added it, or a preview of its place in the base) and where it goes (the
+    step that removes or rewrites it, or a preview of its place in the
+    target). Following a step keeps the line selected; [ and ] go back and
+    forward. Hatched line numbers mark lines that never reach the target.
+
     The Files panel (/) and each file's focus button hide files; navigation
     then skips steps that change none of the shown files. --include and --exclude
     take Git pathspecs and choose the files shown at first. The page still
