@@ -29,12 +29,11 @@
   --tk-k: #c099ff; --tk-s: #a8d88a; --tk-c: #8793a5; --tk-n: #ff9e64;
   --tk-f: #82aaff; --tk-t: #ffc777; --tk-d: #fca7ea; --tk-b: #65bcff;
   --tk-g: #ff757f; --tk-a: #ffc777; --tk-o: #89ddff; --tk-h: #ffc777;
-  /* Dark mode can't dim deleted code with opacity and keep 4.5:1 contrast,
-     so it draws deleted code in one gray instead. */
-  --line-no: #778395;
+  /* No token color dimmed with opacity keeps 4.5:1 contrast, so deleted code
+     is one gray instead. Line numbers also pass on --rule-soft hatching. */
+  --line-no: #7d899b;
   --add-no: color-mix(in srgb, var(--add) 70%, var(--text));
-  --del-ink: #818d9f; --del-dim: 1;
-  --scaf-ink: #7a8698; --scaf-dim: 1;
+  --del-ink: #818d9f; --scaf-ink: #7a8698;
   color-scheme: dark;
 }
 /* Light colors follow GitHub's Primer palette: white surfaces, crisp borders. */
@@ -62,10 +61,9 @@
   --tk-k: #cf222e; --tk-s: #0a3069; --tk-c: #59636e; --tk-n: #0550ae;
   --tk-f: #6639ba; --tk-t: #953800; --tk-d: #8250df; --tk-b: #0550ae;
   --tk-g: #116329; --tk-a: #0550ae; --tk-o: #0550ae; --tk-h: #0550ae;
-  --line-no: #818b98;
+  --line-no: #636d79;
   --add-no: color-mix(in srgb, var(--add) 80%, var(--text));
-  --del-ink: initial; --del-dim: .5;
-  --scaf-ink: initial; --scaf-dim: .32;
+  --del-ink: #706b6e; --scaf-ink: #717072;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -80,8 +78,8 @@
     --tk-k: #cf222e; --tk-s: #0a3069; --tk-c: #59636e; --tk-n: #0550ae;
     --tk-f: #6639ba; --tk-t: #953800; --tk-d: #8250df; --tk-b: #0550ae;
     --tk-g: #116329; --tk-a: #0550ae; --tk-o: #0550ae; --tk-h: #0550ae;
-    --line-no: #818b98; --add-no: color-mix(in srgb, var(--add) 80%, var(--text));
-    --del-ink: initial; --del-dim: .5; --scaf-ink: initial; --scaf-dim: .32;
+    --line-no: #636d79; --add-no: color-mix(in srgb, var(--add) 80%, var(--text));
+    --del-ink: #706b6e; --scaf-ink: #717072;
     color-scheme: light;
   }
 }
@@ -226,14 +224,14 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
   user-select: none; font-variant-numeric: tabular-nums; transition: color .45s, background-color .45s;
 }
 .row .sg { flex: none; width: 18px; text-align: center; user-select: none; color: transparent; transition: color .45s; }
-.row .cd { padding-right: 24px; transition: filter .5s ease, opacity .5s ease, color .5s ease; }
+.row .cd { padding-right: 24px; transition: filter .5s ease, color .5s ease; }
 .row.add { background: var(--add-bg); }
 .row.add .no { background: var(--add-gutter); color: var(--add-no); }
 .row.add .sg { color: var(--add); }
 .row.del { background: var(--del-bg); }
 .row.del .no { background: var(--del-gutter); color: color-mix(in srgb, var(--del) 70%, var(--text)); }
 .row.del .sg { color: var(--del); }
-.row.del .cd { --ink: var(--del-ink); color: var(--ink, var(--text)); filter: grayscale(1); opacity: var(--del-dim); }
+.row.del .cd { --ink: var(--del-ink); color: var(--ink); filter: grayscale(1); }
 .row.gap {
   color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; font-size: 11.5px;
   background: repeating-linear-gradient(135deg, transparent 0 6px, var(--rule-soft) 6px 7px);
@@ -257,7 +255,7 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .row.note .cd { color: var(--muted); font-style: italic; }
 .row .cd i { font-style: normal; }
 .cd * { transition: color .5s ease; }
-/* --ink, when set, overrides token colors (deleted code in dark mode). */
+/* --ink, set on deleted lines, overrides token colors. */
 .cd .k { color: var(--ink, var(--tk-k)); } .cd .s { color: var(--ink, var(--tk-s)); } .cd .c { color: var(--ink, var(--tk-c)); font-style: italic; }
 .cd .n { color: var(--ink, var(--tk-n)); } .cd .f { color: var(--ink, var(--tk-f)); } .cd .t { color: var(--ink, var(--tk-t)); }
 .cd .d { color: var(--ink, var(--tk-d)); } .cd .b { color: var(--ink, var(--tk-b)); } .cd .g { color: var(--ink, var(--tk-g)); }
@@ -268,9 +266,9 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .row.add.temp .no { background: repeating-linear-gradient(135deg, var(--add-gutter) 0 3px, transparent 3px 6px); }
 .row.ctx.temp .no { background: repeating-linear-gradient(135deg, var(--rule-soft) 0 3px, transparent 3px 6px); }
 .row.del.scaf { background: color-mix(in srgb, var(--del-bg) 45%, transparent); }
-.row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); color: var(--line-no); }
+.row.del.scaf .no { background: repeating-linear-gradient(135deg, var(--del-gutter) 0 3px, transparent 3px 6px); }
 .row.del.scaf .sg { opacity: .5; }
-.row.del.scaf .cd { --ink: var(--scaf-ink); opacity: var(--scaf-dim); }
+.row.del.scaf .cd { --ink: var(--scaf-ink); }
 /* A selected line: its bar says where it came from and where it goes. */
 .row.line .no { cursor: pointer; }
 .row.sel {
@@ -373,7 +371,7 @@ footer.seek {
 
 /* File filter */
 .card-head .focus {
-  border: 0; background: transparent; color: var(--faint); cursor: pointer; padding: 0 2px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0 2px;
   font-size: 13px; line-height: 1; flex: none;
 }
 .card-head .focus:hover, .card-head .focus.on { color: var(--accent); }
@@ -398,8 +396,8 @@ footer.seek {
 .files li.out { opacity: .55; }
 .files li.out label { cursor: default; }
 .files li .why { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.files li .only { visibility: hidden; }
-.files li:hover .only { visibility: visible; }
+.files li .only { opacity: 0; }
+.files li:hover .only, .files li .only:focus-visible { opacity: 1; }
 .hiddenonly { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule-soft); padding-top: 10px; }
 
 /* Help: a native modal dialog, so the page behind it is inert and focus returns on close.
@@ -450,14 +448,14 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   <button class="tag" id="partial" hidden>Partial</button>
   <div class="spacer"></div>
   <div class="controls">
-    <button class="btn" id="less" title="Less context (-)">−</button>
+    <button class="btn" id="less" title="Less context (-)" aria-label="Less context">−</button>
     <span class="ctx-readout mono" id="ctx"></span>
-    <button class="btn" id="more" title="More context (+)">+</button>
+    <button class="btn" id="more" title="More context (+)" aria-label="More context">+</button>
     <button class="btn" id="full" title="Whole files (f)">Whole files</button>
     <button class="btn" id="filesbtn" title="Choose files (/)" aria-expanded="false" aria-controls="files">Files</button>
     <a class="btn" id="download" hidden title="Download this page as a single HTML file">Download</a>
-    <button class="btn" id="theme" title="Theme (t)">◐</button>
-    <button class="btn" id="helpbtn" title="Keys (?)">?</button>
+    <button class="btn" id="theme" title="Theme (t)" aria-label="Toggle theme">◐</button>
+    <button class="btn" id="helpbtn" title="Keys (?)" aria-label="Keyboard shortcuts" aria-haspopup="dialog">?</button>
   </div>
 </header>
 <div class="files" id="files" role="dialog" aria-label="Files" hidden>
@@ -476,8 +474,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
 </main>
 <footer class="seek">
   <div class="nav">
-    <button class="btn" id="prev" title="Previous (←)">←</button>
-    <button class="btn" id="next" title="Next (→)">→</button>
+    <button class="btn" id="prev" title="Previous (←)" aria-label="Previous step">←</button>
+    <button class="btn" id="next" title="Next (→)" aria-label="Next step">→</button>
   </div>
   <div class="timeline" id="timeline">
     <div class="labels" id="labels"></div>
@@ -491,7 +489,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   <button class="btn close" id="helpclose" aria-label="Close">×</button>
   <h2 id="helptitle" tabindex="-1" autofocus>Keys</h2>
   <dl>
-    <dt>→ n l space</dt><dd>Next step</dd>
+    <dt>→ n l</dt><dd>Next step</dd>
     <dt>← p h</dt><dd>Previous step</dd>
     <dt>Home / End</dt><dd>First / last step</dd>
     <dt>j / k</dt><dd>Scroll code</dd>
@@ -499,7 +497,6 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>0</dt><dd>Reset context</dd>
     <dt>f</dt><dd>Toggle whole files</dd>
     <dt>/</dt><dd>Choose which files to show</dd>
-    <dt>◎</dt><dd>Show only this file (again: show all)</dd>
     <dt>t</dt><dd>Toggle theme</dd>
     <dt>?</dt><dd>This help</dd>
     <dt>click a line</dt><dd>Show where it came from and where it goes</dd>
@@ -519,6 +516,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <div>◆ on the seek bar: the step where a file first appears</div>
     <div><span class="journey">‹ edit 2 of 4 ›</span>&nbsp; on a file: go to its previous or next change</div>
     <div><span class="journey last">final edit</span>&nbsp; no later step changes the file</div>
+    <div>◎ on a file: show only that file; again to show all</div>
   </div>
 </dialog>
 <script id="data" type="application/json">__DATA__</script>
@@ -609,8 +607,8 @@ function journey(f, i) {
   if (n === 1) return `<span class="journey only" title="The only step that changes this file">only edit</span>`;
   const last = k === n - 1;
   const label = `${last && f.status !== "D" ? "final edit" : "edit"} ${k + 1} of ${n}`;
-  const link = (to, sign, word) => to == null ? `<span class="jg off">${sign}</span>`
-    : `<button class="jg" data-to="${to}" data-p="${esc(f.path)}" title="${word} change to this file: step ${to + 1}">${sign}</button>`;
+  const link = (to, sign, word) => to == null ? `<span class="jg off" aria-hidden="true">${sign}</span>`
+    : `<button class="jg" data-to="${to}" data-p="${esc(f.path)}" title="${word} change to this file: step ${to + 1}" aria-label="${word} change to ${esc(f.path)}: step ${to + 1}">${sign}</button>`;
   return `<span class="journey${last ? " last" : ""}" title="This file changes in steps ${stepList(steps)}">`
     + link(k > 0 ? steps[k - 1] : null, "‹", "Previous") + `<span>${label}</span>`
     + link(last ? null : steps[k + 1], "›", "Next") + `</span>`;
@@ -821,7 +819,7 @@ function cardHead(card) {
   const counts = f.binary ? `<span class="counts">binary</span>`
     : `<span class="counts"><span class="a">+${f.added}</span><span class="d">−${f.deleted}</span></span>`;
   const only = focusedOn(f.path);
-  const focus = `<button class="focus${only ? " on" : ""}" data-p="${esc(f.path)}" title="${only ? "Show all files" : "Show only this file"}">◎</button>`;
+  const focus = `<button class="focus${only ? " on" : ""}" data-p="${esc(f.path)}" title="${only ? "Show all files" : "Show only this file"}" aria-label="Show only ${esc(f.path)}" aria-pressed="${only}">◎</button>`;
   return `<div class="path mono">${esc(dir)}<b>${esc(base)}</b></div>${badges}${counts}${focus}<div class="ruler"><div class="win"></div></div>`;
 }
 
@@ -1318,7 +1316,7 @@ document.addEventListener("keydown", (e) => {
     toggleHelp(false);
     if (k === "Escape") { e.preventDefault(); return; }
   }
-  if (["ArrowRight", "n", "l", " "].includes(k)) step(e.shiftKey && k === " " ? -1 : 1, e.repeat);
+  if (["ArrowRight", "n", "l"].includes(k)) step(1, e.repeat);
   else if (["ArrowLeft", "p", "h"].includes(k)) step(-1, e.repeat);
   else if (k === "Home") goto(nextShown(-1, 1) ?? 0);
   else if (k === "End") goto(nextShown(D.slides.length, -1) ?? D.slides.length - 1);
@@ -1571,7 +1569,7 @@ function renderFiles() {
   const row = (p, out) => {
     const [dir, base] = splitPath(p);
     const box = `<input type="checkbox" data-p="${esc(p)}"${out ? " disabled" : state.hidden.has(p) ? "" : " checked"}>`;
-    const tail = out ? `<span class="why">not retold</span>` : `<button class="linkish only" data-p="${esc(p)}">only</button>`;
+    const tail = out ? `<span class="why">not retold</span>` : `<button class="linkish only" data-p="${esc(p)}" aria-label="Show only ${esc(p)}">only</button>`;
     return `<li class="${out ? "out" : ""}"><label>${box}<span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span></label>${tail}</li>`;
   };
   $("flist").innerHTML = PATHS.filter(match).map((p) => row(p, false)).join("")
