@@ -271,11 +271,11 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 .row.del.scaf .cd { --ink: var(--scaf-ink); }
 /* A selected line: its bar says where it came from and where it goes. */
 .row.line .no { cursor: pointer; }
-.row.sel {
-  background-image: linear-gradient(color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-.row.sel .no { color: var(--accent); }
+/* An outline, not a tint: syntax colors on added lines are already near 4.5:1,
+   so even a faint tint behind them fails. The gutter draws the bar so its own
+   background can't cover it. */
+.row.sel, .peek .row.hit { outline: 1px solid var(--accent); outline-offset: -1px; }
+.row.sel .no, .peek .row.hit .no { box-shadow: inset 3px 0 0 var(--accent); }
 .linebar {
   position: fixed; z-index: 7; max-width: 760px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px;
   background: var(--card); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--shadow);
@@ -310,8 +310,6 @@ section.stage { overflow: auto; padding: 22px 26px 40vh; min-width: 0; scroll-be
 }
 .peek .ph .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .peek .ph b { color: var(--text); font-weight: 600; }
-.peek .row.hit { background: var(--accent-soft); }
-.peek .row.hit .no { color: var(--accent); }
 .fates { margin: -8px 0 20px; font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
 .fates b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
@@ -402,6 +400,7 @@ footer.seek {
 
 /* Help: a native modal dialog, so the page behind it is inert and focus returns on close.
    Never set display here; the browser hides it with display: none while closed. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .help {
   color: var(--text); background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
   padding: 22px 26px; min-width: 300px; box-shadow: var(--shadow);
@@ -471,6 +470,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
 <main>
   <aside class="story" id="story"></aside>
   <section class="stage" id="stage"></section>
+  <div class="sr-only" id="announce" role="status"></div>
 </main>
 <footer class="seek">
   <div class="nav">
@@ -500,6 +500,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>t</dt><dd>Toggle theme</dd>
     <dt>?</dt><dd>This help</dd>
     <dt>click a line</dt><dd>Show where it came from and where it goes</dd>
+    <dt>Tab, then ↑ ↓</dt><dd>Select lines in a diff; ← → scroll it</dd>
     <dt>[ ]</dt><dd>Follow the selected line back or forward</dd>
     <dt>browser back</dt><dd>Return to the step you visited before</dd>
     <dt>Esc</dt><dd>Close the peek, then clear the selection</dd>
@@ -862,11 +863,14 @@ function updateCardHead(el, card) {
   void win;
 }
 
+let announcedStep = null;
 function renderStory(dir) {
   const s = D.slides[state.step];
   let subject = s.subject, synthetic = false;
   const m = subject.match(/^synthetic:\s*/i);
   if (m) { subject = subject.slice(m[0].length); synthetic = true; }
+  if (announcedStep !== null && announcedStep !== state.step) announce(`Step ${state.step + 1} of ${D.slides.length}: ${subject}`);
+  announcedStep = state.step;
   const paras = s.body ? s.body.split(/\n\s*\n/) : [];
   const body = paras.map(renderParagraph).join("");
   const over = D.budget !== null && s.lines > D.budget;
@@ -1100,6 +1104,7 @@ async function go(dir) {
   flashFocus();
 }
 
+let refocusSel = false;
 function flashFocus() {
   const key = state.focus;
   state.focus = null;
@@ -1112,6 +1117,11 @@ function flashFocus() {
   }
   // A selected line keeps its bar wherever the line is shown.
   if (state.sel) showBar();
+  if (refocusSel) {
+    refocusSel = false;
+    selRow()?.closest(".rows")?.focus({ preventScroll: true });
+    if (selRow() && barEl) announce(describeLine(selRow()));
+  }
 }
 
 function anchorTop(key) {
@@ -1307,6 +1317,12 @@ document.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement) return;
   // A diff reached with Tab scrolls sideways; after a click in it, arrows still change steps.
   if ((k === "ArrowLeft" || k === "ArrowRight") && e.target.matches?.(".rows") && e.target !== clickedRows) return;
+  // There, ↑/↓ also select lines, which [ and ] can follow.
+  if ((k === "ArrowUp" || k === "ArrowDown") && e.target.matches?.(".card .rows") && e.target !== clickedRows) {
+    moveSel(e.target, k === "ArrowUp" ? -1 : 1);
+    e.preventDefault();
+    return;
+  }
   if (k === "Escape" && peekEl) { closePeek(); e.preventDefault(); return; }
   if (k === "Escape" && state.sel && !$("help").open) { select(null); e.preventDefault(); return; }
   if ((k === "[" || k === "]") && follow(k === "[" ? -1 : 1)) { e.preventDefault(); return; }
@@ -1390,7 +1406,11 @@ addEventListener("resize", () => { layoutFlags(); closePeek(); placeBar(); });
 
 let peekEl = null, barEl = null;
 function closePeek() {
-  if (peekEl) { peekEl.remove(); peekEl = null; }
+  if (peekEl) {
+    const back = peekEl.contains(document.activeElement) && peekEl._return;
+    peekEl.remove(); peekEl = null;
+    if (back && back.isConnected) back.focus({ preventScroll: true });
+  }
   if (barEl) barEl.querySelectorAll(".lb.on").forEach((b) => b.classList.remove("on"));
 }
 // Show a line in its place in the base or target, a few lines either side.
@@ -1401,8 +1421,11 @@ function peek(anchor, side) {
   const el = document.createElement("div");
   el.className = "peek";
   el._side = side;
+  el._return = document.activeElement;
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", `${at.path}:${at.k + 1} ${side.where}`);
   el.innerHTML = `<div class="ph"><span class="path mono">${esc(dir)}<b>${esc(base)}</b>:${at.k + 1}</span><span>${side.where}</span></div>`
-    + `<div class="rows"><div class="rows-inner"></div></div>`;
+    + `<div class="rows" tabindex="0" role="region" aria-label="Lines around it"><div class="rows-inner"></div></div>`;
   const inner = el.querySelector(".rows-inner");
   for (let k = Math.max(0, at.k - 4); k < Math.min(ids.length, at.k + 5); k++) {
     const row = document.createElement("div");
@@ -1410,12 +1433,14 @@ function peek(anchor, side) {
     row.innerHTML = `<span class="no">${k + 1}</span><span class="sg"></span><span class="cd">${lineHtml(ids[k]) || " "}</span>`;
     inner.appendChild(row);
   }
-  document.body.appendChild(el);
+  // In <main> so it sits with the code it explains; fixed positioning places it.
+  stage.after(el);
   const r = anchor.getBoundingClientRect(), s = stage.getBoundingClientRect(), h = el.offsetHeight;
   const top = r.bottom + 6 + h <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - h);
   el.style.top = top + "px";
   el.style.left = Math.max(8, Math.min(innerWidth - el.offsetWidth - 8, s.left + 20)) + "px";
   peekEl = el;
+  el.querySelector(".rows").focus({ preventScroll: true });
 }
 
 // The selected line's bar: one side for where it came from, one for where it goes.
@@ -1429,8 +1454,11 @@ function sideHtml(side, dir) {
   const v = act ? (dir === "back" ? "← " + side.verb : side.verb + " →") : side.verb;
   const t = side.subject ? `<span class="t">${inline(side.subject)}</span>` : "";
   const title = side.subject ? ` title="Step ${side.jump + 1}: ${esc(side.subject)}"` : "";
-  const parts = dir === "back" ? `<span class="v">${esc(v)}</span>${t}` : `${t}<span class="v">${esc(v)}</span>`;
-  return `<${tag} class="lb ${dir}${act ? "" : " off"}" data-dir="${dir}"${title}>${parts}</${tag}>`;
+  // The hidden colon keeps the button's name from running the subject into the verb.
+  const sep = t ? `<span class="sr-only">: </span>` : "";
+  const parts = dir === "back" ? `<span class="v">${esc(v)}</span>${sep}${t}` : `${t}${sep}<span class="v">${esc(v)}</span>`;
+  const keys = act ? ` aria-keyshortcuts="${dir === "back" ? "[" : "]"}"` : "";
+  return `<${tag} class="lb ${dir}${act ? "" : " off"}" data-dir="${dir}"${title}${keys}>${parts}</${tag}>`;
 }
 function hideBar() {
   closePeek();
@@ -1443,6 +1471,8 @@ function showBar() {
   const r = row._r, life = lifeOf(r.kind, r.id, state.step);
   const el = document.createElement("div");
   el.className = "linebar";
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", "Selected line");
   el._row = row;
   el._life = life;
   el.innerHTML = sideHtml(life.back, "back") + sideHtml(life.fwd, "fwd");
@@ -1451,7 +1481,7 @@ function showBar() {
     if (b) follow(b.dataset.dir === "back" ? -1 : 1);
     e.stopPropagation();
   });
-  document.body.appendChild(el);
+  stage.after(el);
   barEl = el;
   placeBar();
 }
@@ -1476,7 +1506,35 @@ function select(key) {
   const row = selRow();
   if (row) row.classList.add("sel");
   if (key) showBar(); else hideBar();
+  if (row && barEl) announce(describeLine(row));
   saveHistory();
+}
+function describeLine(row) {
+  const r = row._r, life = barEl._life;
+  const kind = r.kind === "add" ? "Added" : r.kind === "del" ? "Deleted" : "Unchanged";
+  const sides = [life.back, life.fwd].filter(Boolean).map((s) => s.verb).join("; ");
+  return `${kind} line ${r.no ?? ""}: ${D.text[r.id].trim() || "blank"}. ${sides}.`;
+}
+function announce(text) {
+  // Clear first so repeating the same text is announced again.
+  const el = $("announce");
+  el.textContent = "";
+  requestAnimationFrame(() => { el.textContent = text; });
+}
+// Move the selection to the previous (-1) or next (1) line in a diff.
+function moveSel(rows, dir) {
+  const lines = [...rows.querySelectorAll(".row.line")].filter((r) => r.offsetHeight);
+  if (!lines.length) return;
+  const at = lines.indexOf(selRow());
+  let next;
+  if (at >= 0) next = lines[Math.max(0, Math.min(lines.length - 1, at + dir))];
+  else {
+    // Start from the first line in view, so the selection appears where the reader is.
+    const top = stage.getBoundingClientRect().top;
+    next = lines.find((r) => r.getBoundingClientRect().top >= top) || lines[0];
+  }
+  select(next.dataset.key);
+  next.scrollIntoView({ block: "nearest" });
 }
 // Go back (-1) or forward (1) from the selected line: jump to a step, or preview the base or target.
 function follow(dir) {
@@ -1491,6 +1549,8 @@ function follow(dir) {
     else { peek(barEl, side); b.classList.add("on"); }
   } else if (side.jump != null) {
     state.focus = state.sel;
+    // Keyboard users keep their place: focus returns to the line's diff in the new step.
+    refocusSel = !!document.activeElement?.closest?.(".card .rows, .linebar");
     goto(side.jump);
   } else return false;
   return true;
