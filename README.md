@@ -81,8 +81,8 @@ A few variations you might want:
   self-contained file you can send to anyone.
 - **Reviewing on your phone:** have your agent serve the retelling and send you
   the link. Add a line to the prompt such as "When done, serve it with
-  git-retell web --serve behind ngrok and give me the URL." The page has a
-  Download button, so you can share the file from your phone too.
+  git-retell web --serve --secret-url behind ngrok and give me the URL." The
+  page has a Download button, so you can share the file from your phone too.
 
 Run `git-retell --help` and `git-retell COMMAND --help` for everything else.
 

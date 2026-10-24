@@ -1,9 +1,11 @@
 """Serve a web page over HTTP so another device, such as a phone, can open it.
 
-The page answers only under a random path, so the URL itself is the
-credential: anyone who finds the port, or a tunnel's public hostname, gets
-404s without it. Tunnels and authentication are left to tools built for them
-(Tailscale, ngrok); the tool only listens.
+With a secret URL, the page answers only under a random path, so the URL
+itself is the credential: anyone who finds the port, or a tunnel's public
+hostname, gets 404s without it. It's opt-in because most setups already limit
+who can connect (loopback, Tailscale), and there a bare URL is easier to type.
+Tunnels and authentication are left to tools built for them (Tailscale,
+ngrok); the tool only listens.
 """
 
 import secrets
@@ -26,10 +28,13 @@ WILDCARDS = {"", "0.0.0.0", "::"}
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, host: str, port: int, path: Path, data: dict):
+    def __init__(
+        self, host: str, port: int, path: Path, data: dict, secret: bool = False
+    ):
         if ":" in host:
             self.address_family = socket.AF_INET6
-        self.token = secrets.token_urlsafe(16)
+        self.token = secrets.token_urlsafe(16) if secret else None
+        self.root = f"/{self.token}/" if self.token else "/"
         self.filename = path.name
         # Downloads get the file as written; only the served copy shows the
         # Download button, since a saved file has nothing to download from.
@@ -44,7 +49,7 @@ class Server(ThreadingHTTPServer):
             host = socket.gethostname()
         elif ":" in str(host):
             host = f"[{host}]"
-        return f"http://{host}:{port}/{self.token}/"
+        return f"http://{host}:{port}{self.root}"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -56,9 +61,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def respond(self, body: bool):
         server = cast(Server, self.server)
-        root = f"/{server.token}/"
+        root = server.root
         path = self.path.split("?", 1)[0]
-        if path == root.rstrip("/"):
+        if server.token and path == root.rstrip("/"):
             # The page's relative Download link needs the trailing slash.
             self.send_response(HTTPStatus.PERMANENT_REDIRECT)
             self.send_header("Location", root)
@@ -90,10 +95,12 @@ class Handler(BaseHTTPRequestHandler):
         """Stay quiet; the printed URL is the only output agents need."""
 
 
-def serve(path: Path, data: dict, host: str, port: int, open_browser: bool) -> None:
+def serve(
+    path: Path, data: dict, host: str, port: int, open_browser: bool, secret: bool
+) -> None:
     """Serve the page at path until interrupted."""
     try:
-        server = Server(host, port, path, data)
+        server = Server(host, port, path, data, secret)
     except OSError as error:
         raise click.ClickException(
             f"Cannot listen on {host}:{port}: {error.strerror or error}"
