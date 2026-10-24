@@ -51,6 +51,26 @@ def test_start_rejects_collisions_without_changing_retelling(repo, tmp_path):
     assert result.exit_code != 0
 
 
+def test_failed_start_leaves_nothing_behind(repo, tmp_path):
+    (tmp_path / "file").write_text("not a directory\n")
+    runner = CliRunner()
+    args = ["start", "demo", "--from", "HEAD", "--to", "HEAD", "--worktree"]
+    result = runner.invoke(cli, [*args, str(tmp_path / "file" / "author")])
+    assert result.exit_code != 0
+    assert not git(repo, "for-each-ref", "refs/heads/retell", "refs/retell").strip()
+    assert runner.invoke(cli, [*args, str(tmp_path / "author")]).exit_code == 0
+
+
+def test_start_refuses_an_existing_branch_without_deleting_it(repo, tmp_path):
+    git(repo, "branch", "retell/demo")
+    result = CliRunner().invoke(
+        cli,
+        ["start", "demo", "--from", "HEAD", "--worktree", str(tmp_path / "author")],
+    )
+    assert result.exit_code != 0 and "already exists" in result.output
+    assert resolve(repo, "retell/demo") == resolve(repo, "HEAD")
+
+
 def test_start_requires_exactly_one_base(repo, tmp_path):
     runner = CliRunner()
     for base in ([], ["--from", "HEAD", "--from-scratch"]):

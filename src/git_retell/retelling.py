@@ -98,8 +98,19 @@ def start(
     prefix = f"refs/retell/{name}"
     if git(repo, "for-each-ref", "--format=%(refname)", prefix).strip():
         raise click.ClickException(f"Retelling {name!r} already exists.")
+    branch = f"refs/heads/retell/{name}"
+    if git(repo, "for-each-ref", "--format=%(refname)", branch).strip():
+        raise click.ClickException(f"Branch retell/{name} already exists.")
     before = resolve(repo, base) if base is not None else empty_root(repo, name)
-    git(repo, "worktree", "add", "-b", f"retell/{name}", str(path), before)
+    try:
+        git(repo, "worktree", "add", "-b", f"retell/{name}", str(path), before)
+    except click.ClickException:
+        # Git creates the branch before the directory, so a failed add (say, an
+        # unwritable path) can leave the branch behind and block a retry.
+        git(repo, "worktree", "prune")
+        if git(repo, "for-each-ref", "--format=%(refname)", branch).strip():
+            git(repo, "branch", "-D", f"retell/{name}")
+        raise
     git(repo, "update-ref", f"{prefix}/base", before)
     git(repo, "update-ref", f"{prefix}/target", after)
     save_settings(repo, name, budget=budget, context=context, partial=partial)
