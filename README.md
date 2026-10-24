@@ -33,7 +33,7 @@ there. Here's a prompt to start from; edit the placeholders and the style to
 suit your review:
 
 ```text
-Use git-retell to explain <BASE> → <TARGET> as <NAME> in <WORKTREE>.
+Use git-retell to explain <BASE> → <TARGET> as <NAME>.
 Read git-retell --help first.
 
 Favor progressive refinement: show the end-to-end behavior early, then add
