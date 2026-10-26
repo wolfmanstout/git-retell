@@ -134,7 +134,6 @@ aside.story {
   padding: 28px 26px 20px;
   overflow: auto; position: relative;
 }
-.story-inner { will-change: transform, opacity; }
 .stepno { display: flex; align-items: baseline; gap: 10px; color: var(--muted); font-size: 12.5px; }
 .stepno b { font-size: 34px; line-height: 1; color: var(--text); font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .synthetic { display: inline-block; margin-top: 18px; font-size: 10.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
@@ -142,10 +141,11 @@ h1.subject { font-size: 21px; line-height: 1.3; letter-spacing: -.015em; font-we
 .body p { margin: 0 0 10px; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
 .body ul { margin: 0 0 10px; padding-left: 18px; }
 .body code { font-size: .88em; padding: 1px 4px; border-radius: 4px; background: var(--rule-soft); }
-.meter { margin: 18px 0 20px; font-size: 12px; color: var(--muted); }
-.meter .track { height: 4px; border-radius: 3px; background: var(--rule-soft); overflow: hidden; margin-top: 6px; }
-.meter .fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s cubic-bezier(.2,.7,.2,1); }
-.meter.over .fill { background: var(--del); }
+.progress { height: 4px; border-radius: 3px; background: var(--rule-soft); overflow: hidden; margin-top: 12px; }
+.progress .fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s cubic-bezier(.2,.7,.2,1); }
+@media (prefers-reduced-motion: reduce) { .progress .fill { transition: none; } }
+.lines { margin: 18px 0 20px; font-size: 12px; color: var(--muted); }
+.lines.over { color: var(--del); }
 .filelist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule-soft); }
 .filelist li {
   display: flex; gap: 8px; align-items: center; padding: 7px 2px; font-size: 12.5px;
@@ -874,7 +874,7 @@ function renderStory(dir) {
   const paras = s.body ? s.body.split(/\n\s*\n/) : [];
   const body = paras.map(renderParagraph).join("");
   const over = D.budget !== null && s.lines > D.budget;
-  const pct = D.budget === null ? 0 : Math.min(100, (s.lines / D.budget) * 100);
+  const pct = ((state.step + 1) / D.slides.length) * 100;
   const files = s.files.map((f, k) => {
     const [dir, base] = splitPath(f.path);
     const badge = (f.status === "A" ? `<span class="badge new">New</span>` : f.status === "D" ? `<span class="badge gone">Del</span>` : "")
@@ -882,41 +882,58 @@ function renderStory(dir) {
     const counts = f.binary ? "binary" : `<span class="a">+${f.added}</span><span class="d">−${f.deleted}</span>`;
     return `<li data-k="${k}"><span class="fname mono"><bdi>${esc(dir)}<b>${esc(base)}</b></bdi></span>${badge}<span class="counts">${counts}</span></li>`;
   }).join("");
-  const html = `<div class="story-inner">
-    <div class="stepno"><b>${state.step + 1}</b><span>of ${D.slides.length} · <span class="mono">${s.commit.slice(0, 8)}</span></span></div>
-    <span class="synthetic">${D.history ? `Commit · ${esc(s.author)} · ${s.date}` : synthetic ? "Synthetic step" : "Step"}</span>
-    <h1 class="subject">${inline(subject)}</h1>
-    <div class="body">${body}</div>
-    <div class="meter${over ? " over" : ""}">${D.budget === null ? `${s.lines} diff lines at U${D.context}`
-      : `${s.lines} of ${D.budget} diff lines at U${D.context}
-      <div class="track"><div class="fill" style="width:${pct}%"></div></div>`}</div>
-    <div class="fates">${fatesHtml(STATS[state.step])}</div>
-    ${s.files.length || !s.all.length ? `<ul class="filelist">${files}</ul>`
-      : `<p class="hiddenonly">This step only changes hidden files (${plural(s.all.length, "file")}).</p>`}
-    ${omittedHtml()}
+  const parts = {
+    kind: `<span class="synthetic">${D.history ? `Commit · ${esc(s.author)} · ${s.date}` : synthetic ? "Synthetic step" : "Step"}</span>`,
+    subject: `<h1 class="subject">${inline(subject)}</h1>`,
+    body: `<div class="body">${body}</div>`,
+    lines: `<div class="lines${over ? " over" : ""}">${D.budget === null ? `${s.lines} diff lines at U${D.context}`
+      : `${s.lines} of ${D.budget} diff lines at U${D.context}`}</div>`,
+    fates: `<div class="fates">${fatesHtml(STATS[state.step])}</div>`,
+    files: s.files.length || !s.all.length ? `<ul class="filelist">${files}</ul>`
+      : `<p class="hiddenonly">This step only changes hidden files (${plural(s.all.length, "file")}).</p>`,
+    omitted: omittedHtml(),
+  };
+  if (!story.firstChild) storyShell(Object.keys(parts));
+  // The step number and progress bar update in place, so the bar's width
+  // transition shows how far the step moved.
+  story.querySelector(".stepno b").textContent = state.step + 1;
+  story.querySelector(".stepno span").innerHTML = `of ${D.slides.length} · <span class="mono">${s.commit.slice(0, 8)}</span>`;
+  story.querySelector(".progress .fill").style.width = pct + "%";
+  // Only parts whose content changed are replaced and faded in; the rest stay
+  // still. In the file list, files listed in the previous step stay still too.
+  let changed = 0;
+  for (const [name, html] of Object.entries(parts)) {
+    if (storyParts.get(name) === html) continue;
+    storyParts.set(name, html);
+    const el = story.querySelector(`[data-part="${name}"]`);
+    const before = new Set([...el.querySelectorAll("li")].map((li) => li.innerHTML));
+    el.innerHTML = html;
+    if (!dir || reduced) continue;
+    const fresh = [...el.querySelectorAll("li")].filter((li) => !before.has(li.innerHTML));
+    const targets = before.size && fresh.length < el.querySelectorAll("li").length ? fresh : [el];
+    const delay = 40 * changed++;
+    for (const t of targets) {
+      track(t.animate(
+        [{ opacity: 0, transform: `translateY(${dir * 8}px)` }, { opacity: 1, transform: "none" }],
+        { duration: 320, easing: EASE, delay, fill: "backwards" }));
+    }
+  }
+}
+const storyParts = new Map();
+function storyShell(names) {
+  story.innerHTML = `<div class="story-inner">
+    <div class="stepno"><b></b><span></span></div>
+    <div class="progress"><div class="fill"></div></div>
+    ${names.map((name) => `<div data-part="${name}"></div>`).join("")}
   </div>`;
-  const old = story.querySelector(".story-inner");
-  const oldFill = old && old.querySelector(".fill");
-  story.innerHTML = html;
-  const inner = story.querySelector(".story-inner");
-  if (oldFill) {
-    // Let the budget meter glide from its previous value.
-    const fill = inner.querySelector(".fill");
-    fill.style.transition = "none";
-    fill.style.width = oldFill.style.width;
-    requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.transition = ""; fill.style.width = pct + "%"; }));
-  }
-  const omitted = inner.querySelector(".omitted");
-  if (omitted) omitted.addEventListener("toggle", () => { state.omittedOpen = omitted.open; });
-  inner.querySelectorAll(".filelist li[data-k]").forEach((li) => li.addEventListener("click", () => {
-    const el = stage.children[+li.dataset.k];
+  story.addEventListener("toggle", (e) => {
+    if (e.target.matches(".omitted")) state.omittedOpen = e.target.open;
+  }, true);
+  story.addEventListener("click", (e) => {
+    const li = e.target.closest(".filelist li[data-k]");
+    const el = li && stage.children[+li.dataset.k];
     if (el) stage.scrollTo({ top: el.offsetTop - 16, behavior: "smooth" });
-  }));
-  if (dir && !reduced) {
-    track(inner.animate(
-      [{ opacity: 0, transform: `translateY(${dir * 14}px)` }, { opacity: 1, transform: "none" }],
-      { duration: 420, easing: EASE, delay: 120, fill: "backwards" }));
-  }
+  });
 }
 // A partial retelling leaves these files exactly as in the base, at every step.
 function omittedHtml() {
