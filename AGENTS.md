@@ -37,6 +37,8 @@ project.
 
 Run tests with `uv run pytest`. Pre-commit runs ruff and basedpyright.
 
+Run `uv` from the repository root, not from inside `src/git_retell/`.
+
 During development, run `uv run git-retell ...` to use the checkout's code.
 After committing to main, run `uv tool install . --reinstall` to refresh the
 system-wide install.
