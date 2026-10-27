@@ -36,18 +36,22 @@ suit your review:
 Use git-retell to explain <BASE> → <TARGET> as <NAME>.
 Read git-retell --help first.
 
-Favor progressive refinement: show the end-to-end behavior early, then add
-detail. Introduce variables, functions, and classes alongside their first
-use, rather than as advance preparation. Use simple implementations or explicit
-stubs when needed to fit usage and definition together, then refine them.
+Favor progressive refinement: show the end-to-end behavior as early as
+possible, then add detail in later steps. Prefer a crude working
+prototype in the first step over a single complete feature. Introduce
+variables, functions, and classes alongside their first use, rather than
+as advance preparation. Write code in its final location and form when
+it fits alongside its first use; if it doesn't, simplify it rather than
+separating them, then refine it. Temporary code that is rewritten is
+fine. Complete the implementation before introducing tests.
 
-Make each step substantial and coherent, with a commit message explaining its
-purpose and temporary limitations. Group a longer retelling into chapters.
-Treat these as preferences, not rigid rules.
+Make each step substantial and coherent, with a commit message
+explaining its purpose and temporary limitations. Group a longer
+retelling into chapters. Treat these as preferences, not rigid rules.
 
-Preserve existing retellings. Reach the exact target tree, run git-retell
-finish, and report the view command, expansion, and any test results or
-limitations.
+Preserve existing retellings. Reach the exact target tree, run
+git-retell finish, and report the view command, expansion, and any test
+results or limitations.
 ```
 
 When the agent is done, view the retelling in your browser or terminal:
