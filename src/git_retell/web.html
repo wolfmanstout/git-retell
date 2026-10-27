@@ -905,7 +905,7 @@ function renderStory(dir) {
   const parts = {
     kind: `<div class="eyebrow">${ch.title == null ? "" : `<span class="chapter${ch.start === state.step ? " start" : ""}">`
       + `Chapter ${ch.n} of ${TITLED.length}<span class="sep"> · </span><b>${inline(ch.title)}</b></span>`}`
-      + `${D.history ? `<span>Commit · ${esc(s.author)} · ${s.date}</span>` : ch.title == null ? "<span>Step</span>" : ""}</div>`,
+      + `${D.history ? `<span>Commit · ${esc(s.author)} · ${s.date}</span>` : ""}</div>`,
     subject: `<h1 class="subject">${inline(subject)}</h1>`,
     body: `<div class="body">${body}</div>`,
     lines: `<div class="lines${over ? " over" : ""}">${D.budget === null ? `${s.lines} diff lines at U${D.context}`
