@@ -184,3 +184,22 @@ def test_viewer_uses_initial_context_and_revalidates(
     if override is None:
         assert "VALID 1/1 U0" in outputs[0] and "INVALID" not in outputs[0]
     assert refresh(retelling).context == 0
+
+
+def test_chapters_head_slides_and_warn_without_failing(repo, tmp_path):
+    retelling, path = example(repo, tmp_path)
+    commit(path, "Set up")
+    commit(path, "Begin\n\nWhy.\n\nChapter: Parsing\nChapter:")
+    (path / "code.txt").write_text("after\n")
+    commit(path, "Finish")
+    story = refresh(retelling)
+    report = inspect(story)
+    assert report["valid"]
+    assert [step["chapter"] for step in report["steps"]] == [None, "Parsing", None]
+    assert report["warnings"] == [
+        "Step 2: a Chapter trailer has no title.",
+        "Step 2: 2 Chapter trailers; only the first titled one starts a chapter.",
+    ]
+    commits = story.commits()
+    assert "Chapter" not in viewer.slide(story, commits, 0).split("\n\n")[0]
+    assert viewer.slide(story, commits, 2).split("\n")[1] == "Chapter 1 of 1 · Parsing"

@@ -22,6 +22,7 @@ from .git import (
     resolve,
     tally,
 )
+from .message import chapter, chapter_titles
 
 
 def validate_name(name: str) -> str:
@@ -184,6 +185,8 @@ def inspect(
     limit = retelling.budget if budget is None else budget
     context = retelling.context if context is None else context
     issues: list[str] = []
+    # Warnings flag likely authoring mistakes but never make a retelling invalid.
+    warnings: list[str] = []
     steps: list[dict] = []
     history = retelling.history()
     commits = list(history)
@@ -202,17 +205,27 @@ def inspect(
             issues.append(
                 f"Step {number}: {size} presentation lines exceeds budget {limit}."
             )
+        message = history[commit].message
+        titles = chapter_titles(message)
+        if "" in titles:
+            warnings.append(f"Step {number}: a Chapter trailer has no title.")
+        if len(titles) > 1:
+            warnings.append(
+                f"Step {number}: {len(titles)} Chapter trailers; "
+                "only the first titled one starts a chapter."
+            )
         steps.append(
             {
                 "step": number,
                 "commit": commit,
-                "subject": history[commit].message.split("\n")[0],
+                "subject": message.split("\n")[0],
+                "chapter": chapter(message),
                 "presentation_lines": size,
                 **tally(numstat),
             }
         )
     previous = commits[-1] if commits else retelling.base
-    return finish_report(retelling, limit, issues, steps, previous, context)
+    return finish_report(retelling, limit, issues, steps, previous, context, warnings)
 
 
 def finish_report(
@@ -222,6 +235,7 @@ def finish_report(
     steps: list[dict],
     previous: str,
     context: int,
+    warnings: list[str],
 ) -> dict:
     repo, base, target, tip = (
         retelling.repo,
@@ -291,6 +305,7 @@ def finish_report(
         else None,
         "omitted_files": omitted,
         "issues": issues,
+        "warnings": warnings,
     }
 
 

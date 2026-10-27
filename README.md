@@ -42,7 +42,8 @@ use, rather than as advance preparation. Use simple implementations or explicit
 stubs when needed to fit usage and definition together, then refine them.
 
 Make each step substantial and coherent, with a commit message explaining its
-purpose and temporary limitations. Treat these as preferences, not rigid rules.
+purpose and temporary limitations. Group a longer retelling into chapters.
+Treat these as preferences, not rigid rules.
 
 Preserve existing retellings. Reach the exact target tree, run git-retell
 finish, and report the view command, expansion, and any test results or

@@ -17,13 +17,13 @@ def author(repo, tmp_path):
     retelling, path = example(repo, tmp_path, target="after\n")
     (path / "code.txt").write_text("\n".join(lines) + "\n")
     (path / "new.py").write_text('def f():\n    return """a\nb"""\n')
-    commit(path, "Synthetic: Add a file\n\nIt uses `f`.")
+    commit(path, "Add a file\n\nIt uses `f`.")
     lines[2] = "changed near top"
     lines[35] = "changed near bottom"
     (path / "code.txt").write_text("\n".join(lines) + "\n")
     (path / "blob.bin").write_bytes(b"\0\1\2")
     os.chmod(path / "new.py", 0o755)
-    commit(path, "Edit two places")
+    commit(path, "Edit two places\n\nChapter: Cleanup\nCo-Authored-By: A")
     (path / "new.py").unlink()
     (path / "blob.bin").unlink()
     (path / "code.txt").write_text("after\n")
@@ -35,7 +35,9 @@ def test_line_identities_reconstruct_every_version(repo, tmp_path):
     retelling = author(repo, tmp_path)
     data = web.payload(retelling)
     first, second, third = data["slides"]
-    assert first["subject"] == "Synthetic: Add a file"
+    assert first["subject"] == "Add a file"
+    assert [s["chapter"] for s in data["slides"]] == [None, "Cleanup", None]
+    assert second["body"] == ""
     assert [f["status"] for f in first["files"]] == ["M", "A"]
     for slide, previous in zip(data["slides"], [retelling.base, *retelling.commits()]):
         commit_id = slide["commit"]
@@ -91,20 +93,6 @@ def test_web_command_writes_page(repo, tmp_path):
     assert "Wrote" in result.output
     text = output.read_text()
     assert "<title>demo · Git Retell</title>" in text and "__DATA__" not in text
-
-
-def test_trailers_are_dropped_but_prose_is_kept():
-    body = (
-        "Explain.\n\nCo-Authored-By: A <a@example.invalid>\nSigned-off-by: B\n  folded"
-    )
-    assert web.without_trailers(body) == "Explain."
-    assert web.without_trailers("Co-Authored-By: A") == ""
-    assert web.without_trailers("Explain.\n\nNote: still temporary.") == (
-        "Explain.\n\nNote: still temporary."
-    )
-    assert web.without_trailers("Explain.\n\nFixes: #3\nsee above") == (
-        "Explain.\n\nFixes: #3\nsee above"
-    )
 
 
 def test_lifetimes_separate_scaffolding_from_lines_that_reach_the_target(

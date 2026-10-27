@@ -34,6 +34,7 @@ from pygments.util import ClassNotFound
 
 from .commit_range import CommitRange
 from .git import churn, diff_pairs, diffs, empty_tree, git, line_count, tally
+from .message import chapter, without_trailers
 from .retelling import Retelling, inspect
 from .viewer import Story, safe_text
 
@@ -54,8 +55,6 @@ MATCHING = [
     "--diff-algorithm=myers",
     "--no-indent-heuristic",
 ]
-# Hyphenated tokens (Co-Authored-By) or well-known words; "Note: ..." stays prose.
-TRAILER = re.compile(r"(?i:[a-z0-9]+(?:-[a-z0-9]+)+|fixes|closes|refs|cc|bug): \S")
 # Coarse token classes keep the payload small and the theme easy to restyle.
 CATEGORIES: list[tuple[_TokenType, str]] = [
     (Comment, "c"),
@@ -101,18 +100,6 @@ def blobs(repo: Path, ids: set[str]) -> dict[str, bytes]:
         found[oid] = output[position : position + size]
         position += size + 1
     return found
-
-
-def without_trailers(body: str) -> str:
-    """Drop a final paragraph of Git trailers such as Co-Authored-By; slides show prose."""
-    paragraphs = body.strip().split("\n\n")
-    last = paragraphs[-1].split("\n")
-    # Folded trailer values continue on indented lines.
-    if TRAILER.match(last[0]) and all(
-        TRAILER.match(line) or line[:1].isspace() for line in last
-    ):
-        paragraphs.pop()
-    return "\n\n".join(paragraphs).strip()
 
 
 def split_lines(text: str) -> list[str]:
@@ -476,6 +463,7 @@ def payload(
             "commit": commit,
             "subject": subject,
             "body": without_trailers(body),
+            "chapter": chapter(message),
             "lines": sizes[number],
             "files": builder.step(number, content, raw, numstat),
         }

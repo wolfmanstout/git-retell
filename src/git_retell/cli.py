@@ -44,6 +44,13 @@ def cli():
     The first tree is EXACTLY B and the last must be EXACTLY H. Intermediate
     code need not follow the original development history or pass every check.
 
+    To group steps into chapters, end the message of a chapter's first step
+    with a trailer such as "Chapter: Parsing the config" (after a blank line,
+    alongside any other trailers). The chapter runs until the next one; steps
+    before the first are untitled. Viewers show each step's chapter, and the
+    web seek bar is divided by them. Validate lists chapters and warns about a
+    Chapter trailer with no title or more than one in a commit.
+
     A partial retelling (start --partial) may leave some changed files out: each
     file either reaches its exact target version or stays exactly as in B. Use
     --from-scratch to build from an empty tree instead of B. To retell work you
@@ -438,7 +445,11 @@ def report_output(report: dict, as_json: bool) -> None:
         f"Churn: real {report['real_churn']}, synthetic {report['synthetic_churn']}\n"
         f"Presentation: {report['total_presentation_lines']} total diff lines"
     )
+    chapter = 0
     for step in report["steps"]:
+        if step["chapter"] is not None:
+            chapter += 1
+            click.echo(f"Chapter {chapter}: {step['chapter']}")
         click.echo(
             f"{step['step']:>3} {step['commit'][:8]} {step['presentation_lines']:>4} lines  {step['subject']}"
         )
@@ -453,6 +464,8 @@ def report_output(report: dict, as_json: bool) -> None:
             click.echo(f"    {item['path']}  {counts}")
     for issue in report["issues"]:
         click.echo(f"! {issue}")
+    for warning in report["warnings"]:
+        click.echo(f"Warning: {warning}")
 
 
 @cli.command()
@@ -483,7 +496,8 @@ def validate(name: str, budget: int | None, as_json: bool, context: int | None):
     Only committed state is reviewed; worktree edits are not part of the retelling.
     Presentation size counts every header, changed line, and context line. More
     context can exceed the budget without changing the underlying code or churn.
-    Neither override changes the saved defaults. Exit 0 means all rules pass.
+    Neither override changes the saved defaults. Exit 0 means all rules pass;
+    warnings, such as a Chapter trailer with no title, do not affect it.
 
     \b
     Examples:
@@ -717,14 +731,15 @@ def web(
 
     Transitions animate how each step connects to its neighbors: lines that
     leave collapse, surviving lines move and recolor, new lines expand, and
-    files slide in or out. A seek bar charts each step's churn and marks where
-    each file first appears. Each file header links to that file's previous
+    files slide in or out. A seek bar charts each step's churn and is divided
+    into chapters, if the steps have any. Each file header links to that file's previous
     and next change and labels its final edit. Code is syntax highlighted.
 
     \b
     Keys: right/left or n/p: next/previous step. j/k: scroll.
     +/-: add/remove 3 context lines; 0: reset; f: toggle whole files.
-    /: choose which files to show. Home/End: first/last step. ?: help.
+    /: choose which files to show. Home/End: first/last step.
+    Shift+right/left: next chapter/start of chapter. ?: help.
 
     Clicking a line selects it and shows where it came from (the step that
     added it, or a preview of its place in the base) and where it goes (the

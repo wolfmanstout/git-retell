@@ -8,6 +8,7 @@ import click
 
 from .commit_range import CommitRange
 from .git import diff, diffs
+from .message import chapters
 from .retelling import Retelling, inspect
 
 # Viewers show a retelling's synthetic steps or a range of real commits.
@@ -49,6 +50,10 @@ def slide(
     if pathspecs is not None:
         heading += " · filtered"
         patch = patch or "(No changes to the selected files in this step.)\n"
+    spans = chapters([story.message(c) for c in commits])
+    # The last step is always in the last chapter, so it holds the count.
+    if (found := spans[index]) and (last := spans[-1]):
+        heading += f"\nChapter {found[0]} of {last[0]} · {safe_text(found[1])}"
     return f"{heading}\n\n{message}\n\n{patch}"
 
 
