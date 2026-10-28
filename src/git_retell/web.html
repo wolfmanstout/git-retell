@@ -331,7 +331,8 @@ footer.seek {
   padding: 8px 20px 10px; display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: end;
   user-select: none;
 }
-.nav { display: flex; gap: 6px; padding-bottom: 6px; }
+/* Centers the 34px buttons on the track's axis, 42px above the timeline's bottom. */
+.nav { display: flex; gap: 6px; padding-bottom: 25px; }
 .nav .btn { width: 34px; height: 34px; border-radius: 9px; font-size: 15px; }
 /* --lead makes room above the track for chapter titles and segments. */
 .timeline { --lead: 0px; position: relative; height: calc(var(--lead) + 70px); cursor: pointer; touch-action: none; }
@@ -437,8 +438,10 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   aside.story { border-right: 0; border-bottom: 1px solid var(--rule-soft); padding: 18px 16px; overflow: visible; }
   section.stage { padding: 16px 12px 30vh; overflow: visible; }
   header.bar { padding: 8px 16px; flex-wrap: wrap; }
-  .controls { flex-wrap: wrap; }
-  .btn { white-space: nowrap; }
+  /* Tighter spacing keeps every control on one row at phone widths. */
+  .controls { flex-wrap: wrap; gap: 4px; }
+  .btn { white-space: nowrap; padding: 0 6px; }
+  .ctx-readout { min-width: 0; padding: 0 2px; }
   footer.seek { position: sticky; bottom: 0; padding: 6px 16px 8px; transition: transform .25s ease; }
   /* Tucked away while scrolling down to read; scrolling up brings it back. */
   footer.seek.tucked { transform: translateY(100%); }
