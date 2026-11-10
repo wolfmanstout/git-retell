@@ -11,16 +11,25 @@ CHAPTER = re.compile(r"(?i)chapter:(.*)")
 
 
 def trailer_block(body: str) -> tuple[str, list[str]]:
-    """Split a final paragraph of Git trailers such as Co-Authored-By from the prose."""
+    """Split the trailing paragraphs of trailers such as Co-Authored-By from the prose.
+
+    Git reads only the last paragraph as trailers, but authors often set a
+    Chapter trailer apart from Co-Authored-By with a blank line, so every
+    trailing paragraph made only of trailers counts.
+    """
     paragraphs = body.strip().split("\n\n")
-    last = paragraphs[-1].split("\n")
-    # Folded trailer values continue on indented lines.
-    if TRAILER.match(last[0]) and all(
-        TRAILER.match(line) or line[:1].isspace() for line in last
-    ):
+    trailers: list[str] = []
+    while paragraphs and is_trailers(lines := paragraphs[-1].split("\n")):
         paragraphs.pop()
-        return "\n\n".join(paragraphs).strip(), last
-    return "\n\n".join(paragraphs).strip(), []
+        trailers = lines + trailers
+    return "\n\n".join(paragraphs).strip(), trailers
+
+
+def is_trailers(lines: list[str]) -> bool:
+    # Folded trailer values continue on indented lines.
+    return bool(TRAILER.match(lines[0])) and all(
+        TRAILER.match(line) or line[:1].isspace() for line in lines
+    )
 
 
 def without_trailers(body: str) -> str:
@@ -32,6 +41,12 @@ def chapter_titles(message: str) -> list[str]:
     """The values of every Chapter trailer, in order, including empty ones."""
     lines = trailer_block(message.partition("\n")[2])[1]
     return [m[1].strip() for line in lines if (m := CHAPTER.match(line))]
+
+
+def stray_chapters(message: str) -> int:
+    """How many Chapter lines sit in the prose, where they start nothing."""
+    prose = trailer_block(message.partition("\n")[2])[0]
+    return sum(bool(CHAPTER.match(line)) for line in prose.split("\n"))
 
 
 def chapter(message: str) -> str | None:

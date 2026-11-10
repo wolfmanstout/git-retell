@@ -45,11 +45,13 @@ def cli():
     code need not follow the original development history or pass every check.
 
     To group steps into chapters, end the message of a chapter's first step
-    with a trailer such as "Chapter: Parsing the config" (after a blank line,
-    alongside any other trailers). The chapter runs until the next one; steps
-    before the first are untitled. Viewers show each step's chapter, and the
-    web seek bar is divided by them. Validate lists chapters and warns about a
-    Chapter trailer with no title or more than one in a commit.
+    with a trailer such as "Chapter: Parsing the config" in the final
+    paragraphs, alongside or just before other trailers such as
+    Co-Authored-By. A Chapter line followed by more prose starts nothing. The
+    chapter runs until the next one; steps before the first are untitled.
+    Viewers show each step's chapter, and the web seek bar is divided by them.
+    Validate lists chapters and warns about a Chapter trailer with no title,
+    more than one in a commit, or a Chapter line left in the prose.
 
     A partial retelling (start --partial) may leave some changed files out: each
     file either reaches its exact target version or stays exactly as in B. Use

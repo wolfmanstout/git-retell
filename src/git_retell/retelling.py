@@ -22,7 +22,7 @@ from .git import (
     resolve,
     tally,
 )
-from .message import chapter, chapter_titles
+from .message import chapter, chapter_titles, stray_chapters
 
 
 def validate_name(name: str) -> str:
@@ -213,6 +213,11 @@ def inspect(
             warnings.append(
                 f"Step {number}: {len(titles)} Chapter trailers; "
                 "only the first titled one starts a chapter."
+            )
+        if stray_chapters(message):
+            warnings.append(
+                f"Step {number}: a Chapter line in the prose starts no chapter; "
+                "move it to the trailers at the end of the message."
             )
         steps.append(
             {

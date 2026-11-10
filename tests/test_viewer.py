@@ -191,7 +191,7 @@ def test_chapters_head_slides_and_warn_without_failing(repo, tmp_path):
     commit(path, "Set up")
     commit(path, "Begin\n\nWhy.\n\nChapter: Parsing\nChapter:")
     (path / "code.txt").write_text("after\n")
-    commit(path, "Finish")
+    commit(path, "Finish\n\nChapter: Lost\n\nMore prose.")
     story = refresh(retelling)
     report = inspect(story)
     assert report["valid"]
@@ -199,6 +199,10 @@ def test_chapters_head_slides_and_warn_without_failing(repo, tmp_path):
     assert report["warnings"] == [
         "Step 2: a Chapter trailer has no title.",
         "Step 2: 2 Chapter trailers; only the first titled one starts a chapter.",
+        (
+            "Step 3: a Chapter line in the prose starts no chapter; "
+            "move it to the trailers at the end of the message."
+        ),
     ]
     commits = story.commits()
     assert "Chapter" not in viewer.slide(story, commits, 0).split("\n\n")[0]

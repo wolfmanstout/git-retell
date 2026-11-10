@@ -29,6 +29,14 @@ def test_chapters_come_from_the_final_trailer_paragraph():
     assert message.chapter("S\n\nChapter:\nChapter: A") == "A"
 
 
+def test_a_chapter_set_apart_from_other_trailers_still_counts():
+    body = "Subject\n\nWhy.\n\nChapter: Setup\n\nCo-Authored-By: A <a@example.invalid>"
+    assert message.chapter(body) == "Setup"
+    assert message.without_trailers(body.partition("\n")[2]) == "Why."
+    assert message.stray_chapters(body) == 0
+    assert message.stray_chapters("Subject\n\nChapter: Setup\n\nMore prose.") == 1
+
+
 def test_each_step_belongs_to_the_latest_chapter():
     messages = ["Intro", "A\n\nChapter: One", "B", "C\n\nChapter: Two"]
     assert message.chapters(messages) == [None, (1, "One"), (1, "One"), (2, "Two")]
