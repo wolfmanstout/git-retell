@@ -128,7 +128,23 @@ a.btn:not([hidden]) { display: inline-flex; align-items: center; text-decoration
 .ctx-readout { font-size: 12px; color: var(--muted); min-width: 34px; text-align: center; }
 
 /* Main split */
-main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 0; }
+/* --story-w is set only once someone drags the divider; until then the
+   story column sizes itself. The divider sits in a zero-width column so it
+   overlaps the story's border without taking space from either side. */
+main { display: grid; grid-template-columns: var(--story-w, minmax(300px, 380px)) 0 1fr; min-height: 0; }
+.divider {
+  position: relative; z-index: 3; width: 9px; margin-left: -5px;
+  cursor: col-resize; touch-action: none;
+}
+.divider::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px;
+  background: transparent; transition: background .15s, box-shadow .15s;
+}
+.divider:hover::after, .divider.dragging::after, .divider:focus-visible::after {
+  background: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+}
+.divider:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
 aside.story {
   border-right: 1px solid var(--rule-soft);
   padding: 28px 26px 20px;
@@ -438,6 +454,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
   body { display: block; overflow: visible; }
   /* minmax(0, ...) keeps wide content from widening the page past the screen. */
   main { grid-template-columns: minmax(0, 1fr); }
+  .divider { display: none; }
   aside.story { border-right: 0; border-bottom: 1px solid var(--rule-soft); padding: 18px 16px; overflow: visible; }
   section.stage { padding: 16px 12px 30vh; overflow: visible; }
   header.bar { padding: 8px 16px; flex-wrap: wrap; }
@@ -483,6 +500,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
 </div>
 <main>
   <aside class="story" id="story"></aside>
+  <div class="divider" id="divider" role="separator" aria-orientation="vertical" aria-controls="story"
+    aria-label="Resize the story panel" tabindex="0" title="Drag to resize; double-click to reset"></div>
   <section class="stage" id="stage"></section>
   <div class="sr-only" id="announce" role="status"></div>
 </main>
@@ -513,6 +532,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; }
     <dt>f</dt><dd>Toggle whole files</dd>
     <dt>/</dt><dd>Choose which files to show</dd>
     <dt>t</dt><dd>Toggle theme</dd>
+    <dt>drag the divider</dt><dd>Resize the story panel; double-click to reset</dd>
     <dt>?</dt><dd>This help</dd>
     <dt>click a line</dt><dd>Show where it came from and where it goes</dd>
     <dt>Tab, then ↑ ↓</dt><dd>Select lines in a diff; ← → scroll it</dd>
@@ -1462,7 +1482,73 @@ addEventListener("scroll", () => {
   lastY = y;
 }, { passive: true });
 narrow.addEventListener("change", () => seek.classList.remove("tucked"));
-addEventListener("resize", () => { layoutChapters(); closePeek(); placeBar(); });
+addEventListener("resize", () => { layoutChapters(); setStoryWidth(storyWidth, false); closePeek(); placeBar(); });
+
+// ---------- Story divider ----------
+
+// The width is a per-viewer preference, kept like the theme. It's clamped so
+// neither side becomes unusable, and re-clamped when the window shrinks; the
+// stored value stays what the viewer chose.
+const divider = $("divider"), main = document.querySelector("main");
+const STORY_MIN = 240, STAGE_MIN = 360, WIDTH_KEY = "git-retell-story-width";
+let storyWidth = null;
+function storyBounds() {
+  return [STORY_MIN, Math.max(STORY_MIN, main.clientWidth - STAGE_MIN)];
+}
+function setStoryWidth(w, save = true) {
+  storyWidth = w;
+  if (w == null) main.style.removeProperty("--story-w");
+  else {
+    const [lo, hi] = storyBounds();
+    main.style.setProperty("--story-w", Math.round(Math.min(hi, Math.max(lo, w))) + "px");
+  }
+  const [lo, hi] = storyBounds();
+  divider.setAttribute("aria-valuemin", lo);
+  divider.setAttribute("aria-valuemax", hi);
+  divider.setAttribute("aria-valuenow", Math.round(story.getBoundingClientRect().width));
+  if (!save) return;
+  try {
+    if (w == null) localStorage.removeItem(WIDTH_KEY);
+    else localStorage.setItem(WIDTH_KEY, String(Math.round(w)));
+  } catch (e) {}
+}
+function resized() { closePeek(); placeBar(); }
+let dividerDrag = null;
+divider.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  dividerDrag = { x: e.clientX, w: story.getBoundingClientRect().width };
+  divider.setPointerCapture(e.pointerId);
+  divider.classList.add("dragging");
+  document.body.classList.add("resizing");
+  e.preventDefault();
+});
+divider.addEventListener("pointermove", (e) => {
+  if (!dividerDrag) return;
+  setStoryWidth(dividerDrag.w + e.clientX - dividerDrag.x, false);
+  resized();
+});
+const endDividerDrag = () => {
+  if (!dividerDrag) return;
+  dividerDrag = null;
+  divider.classList.remove("dragging");
+  document.body.classList.remove("resizing");
+  setStoryWidth(story.getBoundingClientRect().width);
+};
+divider.addEventListener("pointerup", endDividerDrag);
+divider.addEventListener("pointercancel", endDividerDrag);
+divider.addEventListener("dblclick", () => { setStoryWidth(null); resized(); });
+// Arrows here resize instead of changing steps, so they stop at the divider.
+divider.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const w = story.getBoundingClientRect().width, by = e.shiftKey ? 80 : 20, [lo, hi] = storyBounds();
+  const next = { ArrowLeft: w - by, ArrowRight: w + by, Home: lo, End: hi }[e.key];
+  if (e.key === "Enter") setStoryWidth(null);
+  else if (next !== undefined) setStoryWidth(next);
+  else return;
+  e.preventDefault();
+  e.stopPropagation();
+  resized();
+});
 
 // ---------- Line stories ----------
 
@@ -1754,6 +1840,7 @@ function hashFilter(params) {
 // ---------- Start ----------
 
 try { const t = localStorage.getItem("git-retell-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+try { const w = parseFloat(localStorage.getItem(WIDTH_KEY) ?? ""); setStoryWidth(w > 0 ? w : null, false); } catch (e) {}
 $("name").textContent = D.name;
 if (D.history) {
   $("kind").textContent = "History";

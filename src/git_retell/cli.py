@@ -743,6 +743,11 @@ def web(
     /: choose which files to show. Home/End: first/last step.
     Shift+right/left: next chapter/start of chapter. ?: help.
 
+    Dragging the divider between the story and the diffs resizes the story
+    panel, and each viewer's browser remembers the width; double-clicking it
+    restores the default. Focused, the divider takes left/right (Shift for
+    bigger steps), Home/End, and Enter to reset.
+
     Clicking a line selects it and shows where it came from (the step that
     added it, or a preview of its place in the base) and where it goes (the
     step that removes or rewrites it, or a preview of its place in the
